@@ -3034,6 +3034,9 @@ function updateGrab(dt){
         if(!sm.hit&&sm.t>=0.42){sm.hit=true;hulkImpact(p,b,cx,cz);smashScenery(cx,cz,_d.set(fx,0,fz).clone());}
         if(sm.t>=1)L.smash=null;
       }
+      if(save.fpv&&!L.head&&!sm){ // first person: hold them out in front at chest height, so they stay on screen
+        const fd=0.95*hs,hy=1.15*hs+0.1*L.charge;
+        tP.set(p.pos.x+fx*fd+rx*-0.35,hy,p.pos.z+fz*fd+rz*-0.35);tN.set(p.pos.x+fx*fd+rx*0.35,hy+0.05,p.pos.z+fz*fd+rz*0.35);}
       if(L.head){ // held up by the head in front of you, body dangling; smashes drive them face-first into the floor
         const hp=_pinA.set(p.pos.x+fx*0.62*hs,1.5*hs+0.1*L.charge,p.pos.z+fz*0.62*hs);
         if(sm){const e=L.smashE;hp.lerp(_pinC.set(p.pos.x+fx*0.95*hs+rx*sm.side*0.3,0.18,p.pos.z+fz*0.95*hs+rz*sm.side*0.3),e);}
@@ -3845,14 +3848,26 @@ let menuSpin=0,dragging=false,dragX=0,spinVel=0.4;
 function fpBody(p,hide){
   if(!p||!p.head||!!p._fpHidden===hide)return;p._fpHidden=hide;p.head.visible=!hide;
   if(hide){p._fpList=p.torso.children.filter(c=>c.isMesh&&c.visible);(p.accMeshes||[]).forEach(g=>g.parent===p.torso&&p._fpList.push(g));p._fpList.forEach(c=>c.visible=false);}
-  else{(p._fpList||[]).forEach(c=>c.visible=true);p._fpList=null;}
+  else{(p._fpList||[]).forEach(c=>c.visible=true);p._fpList=null;for(let i=0;i<2;i++){p.upper[i].visible=true;p.glove[i].scale.setScalar(1);}}
+}
+const _fpw=new THREE.Vector3();
+function fpArms(p){
+  const L=G.lift,R=L&&L.b&&L.b.ragdoll&&L.b.ragdoll.pins;
+  for(let i=0;i<2;i++){
+    p.upper[i].visible=false;p.fore[i].visible=false;const g=p.glove[i],sg=Math.sign(p.shoulder[i].x)||1;
+    if(R){ // gripping: your gloves go to where you're holding them
+      const t=R[Math.min(i,R.length-1)].target;_fpw.copy(t);if(R.length===1)_fpw.x+=(i?1:-1)*0.12*Math.cos(p.yaw),_fpw.z+=(i?-1:1)*0.12*Math.sin(p.yaw);
+      g.position.copy(p.torso.worldToLocal(_fpw));g.scale.setScalar(0.8);
+    }else{g.position.x+=sg*0.15;g.position.y-=0.12;g.position.z+=0.1;g.scale.setScalar(0.72);}
+  }
 }
 function rigCamera(rdt,p,b){
   const hs=p.d.hScale;
   if(save.fpv){ // first person: the camera is your eyes; your own head is hidden so it doesn't block the view
     const yaw=G.slYaw||0,pt=clamp((G.camPitch||0)*1.1,-1.0,1.0);fpBody(p,true);
     const eye=p.rag&&p.ragdoll?p.ragdoll.p[0].clone():p.head.getWorldPosition(new THREE.Vector3()).add(_v3.set(Math.sin(p.yaw)*0.12*hs,0.17*hs,Math.cos(p.yaw)*0.12*hs));
-    camera.position.copy(eye);camera.rotation.order='YXZ';camera.rotation.set(-pt,yaw+Math.PI,0);G.camAz=yaw;return;
+    camera.position.copy(eye);camera.rotation.order='YXZ';camera.rotation.set(-pt,yaw+Math.PI,0);G.camAz=yaw;
+    if(!p.rag)fpArms(p);return;
   }
   fpBody(p,false);
   let yaw;
