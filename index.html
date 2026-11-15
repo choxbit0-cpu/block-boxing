@@ -556,6 +556,16 @@ function ensureDaily(){
 const CHAR_RANKS=[['common','COMMON','#a8aab5',45,0],['uncommon','UNCOMMON','#5fdc6a',25,10],['rare','RARE','#4aa8ff',15,20],['epic','EPIC','#c46bff',8,35],['legendary','LEGENDARY','#ffc531',4.4,55],
   ['mythic','MYTHIC','#ff4f6a',1.8,80],['godly','GODLY','#fff6c8',0.6,120],['cosmic','COSMIC','#b45cff',0.15,170],['universal','UNIVERSAL THREAT','#ff3dd6',0.05,250]];
 const rankOf=id=>CHAR_RANKS.find(r=>r[0]===id)||CHAR_RANKS[0];
+// rank -> [how many buffs, how big]: a COMMON gets one small boost, a UNIVERSAL THREAT gets five huge ones
+const RANK_BUFFS={common:[1,1.05],uncommon:[1,1.1],rare:[2,1.15],epic:[2,1.25],legendary:[3,1.35],mythic:[3,1.5],godly:[4,1.7],cosmic:[4,2],universal:[5,2.5]};
+const BUFF_TYPES={power:'stronger punches',speed:'speed',hp:'HP',stam:'stamina',tough:'toughness',reach:'reach'};
+function rollBuffs(rank){const [n,mag]=RANK_BUFFS[rank]||[1,1.05],keys=Object.keys(BUFF_TYPES),out={};
+  while(Object.keys(out).length<n){const k=keys.splice(Math.floor(Math.random()*keys.length),1)[0];out[k]=Math.round(mag*rand(0.9,1.1)*100)/100;}return out;}
+const buffText=b=>Object.entries(b||{}).map(([k,v])=>`<b>${v.toFixed(2)}×</b> ${BUFF_TYPES[k]}`).join(' · ')||'no buffs';
+function applyBuffs(f,b){if(!b)return;const d=f.d;
+  if(b.power)d.power*=b.power;if(b.speed){d.speed*=b.speed;d.punchSpd=(d.punchSpd||1)*(1+(b.speed-1)*0.5);}
+  if(b.hp)f.hpMul=(f.hpMul||1)*b.hp;if(b.stam){d.maxStam=Math.round(d.maxStam*b.stam);d.stamRegen*=b.stam;}
+  if(b.tough)d.armor=1-(1-(d.armor||0))/b.tough;if(b.reach)d.range*=Math.sqrt(b.reach);}
 const CHAR_SPIN_COST=400,SLOT_COST=[0,0,0,2000,5000];
 function weaponUnlocked(w){if(!w.unlock)return true;const u=w.unlock;return(!u.level||save.level>=u.level)&&(!u.beaten||save.beaten.length>=u.beaten);}
 function unlockText(w){if(!w.unlock)return'';const u=w.unlock,p=[];if(u.level)p.push(`reach level ${u.level}`);if(u.beaten)p.push(`beat ${u.beaten} bot${u.beaten>1?'s':''}`);return'Unlock: '+p.join(' and ');}
@@ -3479,6 +3489,7 @@ function startFight(idx,opts={}){
   if(G.ref)G.ref.dispose();
   if(!G.training){G.ref=new Fighter({height:50,weight:35,reach:40,body:35,stamina:50},REF_LOOK);G.ref.relaxed=true;G.ref.pos.set(2.2,0,0);}else G.ref=null;
   player.hpMul=1+((player.accBonus||{}).hp||0);G.bot.hpMul=1;{const ax=player.accBonus||{};player.d.power*=1+(ax.dmg||0);player.d.speed*=1+(ax.speed||0);}if(!G.training){G.bot.hpMul=B.raw?1:G.mod.giant?1.35:1.12;G.bot.d.power*=1.1;if(G.mod.setup)G.mod.setup(player,G.bot);}
+  applyBuffs(player,(save.chars[save.charIdx]||{}).buffs);
   if(fightStyle().hp)player.hpMul*=fightStyle().hp;if(fightStyle().speed)player.d.speed*=fightStyle().speed;if(fightStyle().stam)player.d.stamRegen*=fightStyle().stam;
   addBelt(G.bot,G.champ?G.champ.col:null);const myBelt=bestBelt();addBelt(player,myBelt?myBelt[2]:null);
   G.chunkN=0;G.chunkReadyT=0;G.fatal=null;$('fatalHint').classList.add('hidden');REPLAY.frames.length=0;REPLAY.koAt=null;REPLAY.lock=false;G.replayDone=false;
@@ -3987,7 +3998,7 @@ function tabModes(){
 function charCard(c,i){
   const R=rankOf(c.rank),act=i===save.charIdx,st=c.stats||{};
   return `<div class="mcard" style="--rc:${R[2]}"><div class="minfo"><b>${(c.look&&c.look.name||'FIGHTER').toUpperCase()} <span class="ttl" style="--tc:${R[2]}">${R[1]}</span></b>
-    <small>OVR ${overall(st)} · ${derive(st).heightCm} cm · ${derive(st).punchKg} kg punch</small></div>
+    <small>OVR ${overall(st)} · ${derive(st).heightCm} cm · ${derive(st).punchKg} kg punch</small><span>${buffText(c.buffs)}</span></div>
     ${act?'<span class="badge">PLAYING</span>':`<button class="chip on" data-char="${i}">PLAY</button>`}</div>`;
 }
 let charSpin=null;
@@ -3998,8 +4009,8 @@ function tabChars(){
   for(let i=n;i<5;i++)h+=i<slots?`<div class="mcard" style="--rc:#555"><div class="minfo"><b>EMPTY SLOT</b><small>Spin to fill it</small></div><button class="chip on" data-cspin="new" ${save.coins<CHAR_SPIN_COST||charSpin?'disabled':''}>🎰 SPIN · 🪙 ${CHAR_SPIN_COST}</button></div>`
     :`<div class="mcard" style="--rc:#333"><div class="minfo"><b>🔒 LOCKED SLOT</b><small>Buy it to hold another fighter</small></div><button class="chip" data-cslot="${i}" ${i===slots&&save.coins>=SLOT_COST[i]?'':'disabled'}>🪙 ${SLOT_COST[i]}</button></div>`;
   h+=`<div id="cspinBox" class="crate" style="--cc:#ff3dd6;justify-content:center;font:900 22px Bungee,Impact,sans-serif;min-height:64px">${charSpin?charSpin.label:'🎰'}</div>
-  <div class="sw" style="margin-top:6px"><button class="chip" data-cspin="replace" ${save.coins<CHAR_SPIN_COST||charSpin?'disabled':''}>RE-SPIN THIS CHARACTER · 🪙 ${CHAR_SPIN_COST}</button></div>
-  <div class="tipbox">ODDS: ${CHAR_RANKS.map(r=>`<span style="color:${r[2]}">${r[1]} ${r[3]}% (+${r[4]})</span>`).join(' · ')}<br>The bonus is added to every stat your new fighter rolls.</div>`;
+  <div class="sw" style="margin-top:6px"><button class="chip" data-cspin="replace" ${save.coins<CHAR_SPIN_COST||charSpin?'disabled':''}>RE-SPIN THIS CHARACTER · 🪙 ${CHAR_SPIN_COST}</button><span class="sub" style="margin:0 0 0 6px;font-size:11px">keeps their stats, rolls a new rank and new buffs</span></div>
+  <div class="tipbox">ODDS: ${CHAR_RANKS.map(r=>`<span style="color:${r[2]}">${r[1]} ${r[3]}% (+${r[4]})</span>`).join(' · ')}<br>New fighters: the bonus is added to every stat they roll. Every rank also gives buffs — COMMON gets one 1.05× boost, UNIVERSAL THREAT gets five 2.5× boosts (speed, stronger punches, HP, stamina, toughness, reach).</div>`;
   return h;
 }
 function switchChar(i){
@@ -4011,17 +4022,18 @@ function rollRank(){const tot=CHAR_RANKS.reduce((a,r)=>a+r[3],0);let x=Math.rand
 function spinCharacter(mode){
   if(charSpin||save.coins<CHAR_SPIN_COST)return;if(mode==='new'&&save.chars.length>=save.charSlots)return;
   save.coins-=CHAR_SPIN_COST;saveGame();SFX.init();
-  const R=rollRank(),stats={};STAT_KEYS.forEach(k=>stats[k]=Math.min(STAT_MAX,rollStat()+R[4]));
+  const R=rollRank(),stats={},keep=mode==='replace';
+  if(keep)Object.assign(stats,save.stats);else STAT_KEYS.forEach(k=>stats[k]=Math.min(STAT_MAX,rollStat()+R[4]));
   const look={...DEFAULT_LOOK,name:(pick(NAME_A)+' '+pick(NAME_B)).slice(0,14),skin:pick(SKIN_TONES_BOT),hair:pick(['#111','#2b1b0e','#5a2d0c','#d8a020','#e8e0c8','#d42a2a','#20c5c5']),
     hairStyle:pick(['bald','buzz','flattop','mohawk','afro','long']),shorts:pick(KIT),gloves:pick(KIT),shoes:pick(['#111','#f4f4f4',pick(KIT)]),shirt:'none',band:Math.random()<0.4};
   let n=0;charSpin={label:'...'};renderMenu();
   const tick=setInterval(()=>{n++;const r=CHAR_RANKS[Math.floor(Math.random()*CHAR_RANKS.length)];charSpin.label=`<span style="color:${r[2]}">${r[1]}</span>`;const el=$('cspinBox');if(el)el.innerHTML=charSpin.label;SFX.tick();
     if(n>=26){clearInterval(tick);charSpin=null;
-      const c={stats,look,locks:{},rank:R[0]};
+      const c={stats,look:keep?save.look:look,locks:keep?save.locks:{},rank:R[0],buffs:rollBuffs(R[0])};
       if(mode==='new'){save.chars.push(c);save.charIdx=save.chars.length-1;}else save.chars[save.charIdx]=c;
-      save.stats=stats;save.look=look;save.locks={};player.setStats(stats);player.setLook(look);saveGame();
+      save.stats=c.stats;save.look=c.look;save.locks=c.locks;player.setStats(c.stats);player.setLook(c.look);saveGame();
       const big=CHAR_RANKS.indexOf(R)>=4;SFX.reveal(big?100:70);if(big){flashScreen(0.35);SFX.cheer(1.5);}
-      renderMenu();const el=$('cspinBox');if(el)el.innerHTML=`<span style="color:${R[2]}">${R[1]}!</span>`;}},70+0*n);
+      renderMenu();const el=$('cspinBox');if(el)el.innerHTML=`<span style="color:${R[2]}">${R[1]}!</span><div style="font:600 12px Rubik,sans-serif;margin-top:4px">${buffText(c.buffs)}</div>`;}},70);
 }
 function tabControls(){
   const k=(a,b)=>`<div class="key"><kbd>${a}</kbd>${b}</div>`;
