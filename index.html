@@ -1356,6 +1356,41 @@ function updateOrgans(dt){
 }
 function clearOrgans(){organs.forEach(o=>scene.remove(o.g));organs.length=0;}
 // a jagged bone sticks out where a brutal hit landed
+// SUPER GORE open wounds: the skin splits where you hit, showing raw flesh, bone and organs underneath.
+// Hitting the same spot again tears the wound wider.
+const WOUND_M={rim:M(0x6a0606,0.7),flesh:M(0xb0262a,0.55),deep:M(0x2a0000,0.9),bone:M(0xf0e8d4,0.45),organ:M(0xd06a78,0.4),liver:M(0x5a1410,0.45),brain:M(0xe8a0a8,0.6)};
+const _wq=new THREE.Quaternion(),_wz=new THREE.Vector3(0,0,1);
+function openWound(b,hitPos,head,dmg){
+  if(!superGore()||b.rag)return;const part=head?b.head:b.torso;if(!part)return;
+  const L=part.worldToLocal(hitPos.clone()),bw=b.d.bodyW,bk=b.d.bulk;
+  const C=head?new THREE.Vector3(0,0.15,0):new THREE.Vector3(0,0.27,0),H=head?new THREE.Vector3(0.14,0.15,0.14):new THREE.Vector3(0.235*bw,0.25,0.135*bk);
+  const d=L.clone().sub(C);let ax='z',best=-1;for(const k of ['x','y','z']){const r=Math.abs(d[k])/H[k];if(r>best){best=r;ax=k;}}
+  if(ax==='y')ax=Math.abs(d.x)/H.x>Math.abs(d.z)/H.z?'x':'z';                 // never on the top/bottom faces
+  const sg=Math.sign(d[ax])||1,P=L.clone();P[ax]=C[ax]+sg*(H[ax]+0.004);P.y=clamp(P.y,C.y-H.y*0.85,C.y+H.y*0.85);
+  if(ax!=='x')P.x=clamp(P.x,-H.x*0.8,H.x*0.8);if(ax!=='z')P.z=clamp(P.z,C.z-H.z*0.8,C.z+H.z*0.8);
+  b.wounds3d=b.wounds3d||[];
+  const near=b.wounds3d.find(w=>w.parent===part&&w.position.distanceTo(P)<0.09);
+  if(near){const s2=Math.min(1.9,near.scale.x*1.22);near.scale.set(s2,s2,1);return;}   // the same spot: rip it wider
+  if(b.wounds3d.length>=12)return;
+  const g=new THREE.Group(),sz=clamp(0.06+dmg*0.0035,0.07,0.15),n=new THREE.Vector3();n[ax]=sg;
+  g.position.copy(P);g.quaternion.copy(_wq.setFromUnitVectors(_wz,n));g.rotation.z+=rand(-0.6,0.6);
+  const add=(m,w,h,dz,x=0,y=0,dd=0.008)=>mk(m,w,h,dd,x,y,dz,g,false);
+  // torn skin edge, raw flesh, dark cavity
+  add(WOUND_M.rim,sz,sz*0.22,0.002,0,sz*0.42);add(WOUND_M.rim,sz,sz*0.22,0.002,0,-sz*0.42);add(WOUND_M.rim,sz*0.22,sz*0.7,0.002,sz*0.42,0);add(WOUND_M.rim,sz*0.22,sz*0.7,0.002,-sz*0.42,0);
+  add(WOUND_M.flesh,sz*0.85,sz*0.85,0.0);add(WOUND_M.deep,sz*0.6,sz*0.6,0.001);
+  if(head){ // cracked skull under the skin
+    add(WOUND_M.bone,sz*0.5,sz*0.42,0.004);add(WOUND_M.deep,sz*0.04,sz*0.38,0.006,sz*0.05,0).rotation.z=0.5;
+    if(dmg>22)add(WOUND_M.brain,sz*0.22,sz*0.16,0.007,-sz*0.08,-sz*0.06);
+  }else if(P.y<0.17){ // gut: intestines spilling out of the abdomen
+    for(let i=0;i<3;i++)add(WOUND_M.organ,sz*0.5,sz*0.13,0.005+i*0.001,rand(-0.02,0.02),(i-1)*sz*0.16).rotation.z=rand(-0.4,0.4);
+    if(dmg>20)add(WOUND_M.liver,sz*0.3,sz*0.18,0.006,sz*0.1,-sz*0.25);
+  }else{ // chest: ribs with an organ behind them
+    add(WOUND_M.organ,sz*0.34,sz*0.3,0.003,0,0);
+    for(let i=-1;i<=1;i++)add(WOUND_M.bone,sz*0.62,sz*0.07,0.006,0,i*sz*0.18);
+  }
+  part.add(g);b.wounds3d.push(g);(b.dents=b.dents||[]).push(g);
+  spawnBlood(hitPos,10,null,{speed:2.5,size:0.04});
+}
 function boneShard(b,hitPos,head){
   if(!superGore()||(b.boneN||0)>=10||b.rag)return;b.boneN=(b.boneN||0)+1;
   const part=head?b.head:b.torso;if(!part)return;const g=new THREE.Group();
@@ -2110,7 +2145,7 @@ class Fighter{
       sc.y=Math.max(0.24,sc.y-0.3*k*0.3);
     }
   }
-  clearDents(){(this.dents||[]).forEach(o=>o.parent&&o.parent.remove(o));this.dents=[];if(this.headMesh)this.headMesh.scale.set(0.28,0.3,0.28);}
+  clearDents(){(this.dents||[]).forEach(o=>o.parent&&o.parent.remove(o));this.dents=[];this.wounds3d=[];if(this.headMesh)this.headMesh.scale.set(0.28,0.3,0.28);}
   // chop off forearm i: it flies away as a physics piece (glove, weapon and all) and leaves a spurting stump
   sever(i,dir){
     if(this.severed[i])return false;
@@ -2745,6 +2780,7 @@ G.resolveHit=(a,b,H=null,hitIdx=0)=>{
   if(superGore()){
     if(heavy&&Math.random()<0.45)gutBurst(hitPos,pdir,low?rand(1,3)|0:1,!low);
     if(!low&&heavy&&Math.random()<0.12&&popEye(b,pdir)){pop('EYE POPPED!',hp.clone().add(_d.set(0,0.5,0)),'brk');comm('HIS EYE CAME OUT!!'.replace('HIS',b.name()+"'S"),true);}
+    if(dmg>=9&&Math.random()<0.6){openWound(b,hitPos,!low,dmg);if(dmg>=18&&Math.random()<0.3)pop('TORN OPEN!',hp.clone().add(_d.set(0,0.45,0)),'brk');}
     if(dmg>=15&&Math.random()<0.4){boneShard(b,hitPos,!low);if(Math.random()<0.4)pop('BONE!',hp.clone().add(_d.set(0,0.35,0)),'brk');}
     if(!low&&Math.random()<0.3)for(let i=0;i<1+(Math.random()*3|0);i++)spawnOrgan(hitPos,pdir,'tooth');
   }
@@ -2766,6 +2802,7 @@ G.resolveHit=(a,b,H=null,hitIdx=0)=>{
   if(P.aerial)pop('AERIAL!',hp.clone().add(_d.set(0,0.75,0)),'counter');
 };
 function pierceFX(b,a,hitPos,dir){
+  if(superGore()){openWound(b,hitPos,false,30);openWound(b,hitPos.clone().addScaledVector(dir,0.3),false,30);}
   if(superGore())setTimeout(()=>gutBurst(hitPos.clone().addScaledVector(dir,0.35),dir,5,false),30);
   b.dent(hitPos,40,dir,true);b.bleedT=Math.max(b.bleedT,10);
   const back=b.torso.localToWorld(new THREE.Vector3(0,0.3,0)).addScaledVector(dir,0.22*b.d.bulk);
@@ -4811,7 +4848,7 @@ if(SERVER_SAVE)fetch('/api/save',{cache:'no-store'}).then(r=>r.ok?r.json():null)
   }else pushServer();
 }).catch(()=>{});
 requestAnimationFrame(frame);
-window.__G=G;window.__frame=t=>frame(t,true);window.__dbg={startFight,startRefFight,BOTS,refProj,BASIC,POWERS,shopMoves,attachAccessories,ACCESSORIES}; // debug hooks
+window.__G=G;window.__frame=t=>frame(t,true);window.__dbg={startFight,startRefFight,BOTS,refProj,BASIC,POWERS,shopMoves,attachAccessories,ACCESSORIES,openWound}; // debug hooks
 </script>
 </body>
 </html>
