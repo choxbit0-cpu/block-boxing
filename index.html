@@ -478,7 +478,7 @@ let save;
 try{save=normalizeSave(JSON.parse(localStorage.getItem(SAVE_KEY)));}catch(e){save=normalizeSave(null);}
 // Progress is kept in two places: this browser's storage, and save.json in the game folder (via serve.mjs),
 // so it survives closing the tab, a different browser, or cleared browser data.
-const SERVER_SAVE=location.protocol.startsWith('http');
+const SERVER_SAVE=location.protocol.startsWith('http')&&/^(localhost|127.0.0.1)$/.test(location.hostname);   // save.json only when you run it with serve.mjs on this PC
 let pushTimer=0;
 function writeLocal(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(save));}catch(e){}}
 function pushServer(){clearTimeout(pushTimer);pushTimer=0;if(!SERVER_SAVE)return;
