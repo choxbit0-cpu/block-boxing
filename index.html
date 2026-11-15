@@ -196,6 +196,13 @@ input[type=range]{width:100%}
 .inj span.cut{background:#5a0000;border:1px solid #ff3030}
 #lockHint{position:absolute;left:50%;top:44%;transform:translateX(-50%);font:800 13px Rubik,sans-serif;color:#fff;background:rgba(0,0,0,.6);padding:8px 16px;border-radius:20px;border:1px solid var(--gold);pointer-events:none}
 #replayBar{position:fixed;inset:0;pointer-events:none;z-index:7}#replayBar .rbt,#replayBar .rbb{position:absolute;left:0;right:0;height:11%;background:#000}#replayBar .rbt{top:0}#replayBar .rbb{bottom:0;display:flex;align-items:center;justify-content:space-between;padding:0 28px;font:900 22px Bungee,Impact,sans-serif;color:#ff4a3a}#replayBar small{font:600 12px Rubik,sans-serif;color:#aaa}
+#tutBox{position:absolute;left:max(16px,env(safe-area-inset-left,0px));top:120px;width:330px;max-width:calc(100vw - 32px);background:rgba(10,12,20,.92);border:2px solid var(--gold);border-radius:14px;padding:14px 16px;font:400 13px/1.5 Rubik,sans-serif;color:var(--txt);z-index:6;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+#tutBox .tstep{font:800 10px Rubik,sans-serif;letter-spacing:1px;color:var(--dim)}#tutBox h3{margin:2px 0 6px;font:400 19px Bungee,Impact,sans-serif;color:var(--gold)}
+#tutBox kbd{display:inline-block;min-width:20px;padding:1px 6px;border-radius:5px;background:#fff;color:#111;font:800 11px Rubik,sans-serif;text-align:center;box-shadow:0 2px 0 #888;margin:0 1px}
+#tutBox .tprog{height:7px;border-radius:4px;background:rgba(255,255,255,.12);margin:10px 0 6px;overflow:hidden}#tutBox .tprog i{display:block;height:100%;background:var(--gold);transition:width .2s}
+#tutBox .tfoot{display:flex;justify-content:space-between;font-size:11px;color:var(--dim)}#tutBox .tdone{color:#5fdc6a;font-weight:800}
+.tutHL{outline:3px solid var(--gold)!important;outline-offset:3px;animation:tutpulse .8s infinite alternate}@keyframes tutpulse{from{outline-color:rgba(255,197,49,1)}to{outline-color:rgba(255,197,49,.25)}}
+#tutBtn.new{background:linear-gradient(180deg,#ffd75e,#e0a020);color:#2a1800}
 #fightInfo{position:absolute;left:50%;top:84px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none}
 #fightInfo div{font:700 12px Rubik,sans-serif;color:#fff;background:rgba(0,0,0,.55);padding:4px 11px;border-radius:14px;border:1px solid rgba(255,255,255,.2);white-space:nowrap}
 #fightInfo .tw{border-color:rgba(255,197,49,.6)}#fightInfo .tw b{color:#ffc531}#fightInfo .ch b{color:#7ab0ff}#fightInfo .ch.done{border-color:#5fdc6a}#fightInfo .ch.done b{color:#5fdc6a}#fightInfo .ch.fail{opacity:.5}
@@ -272,6 +279,7 @@ body.infight .overlay,body.infight .overlay *{cursor:default}
     <div class="logo">BLOCK<br><span>BOXING</span></div>
     <button class="mbtn primary" data-act="fight">FIGHT</button>
     <button class="mbtn" data-act="training" style="text-align:center">TRAINING ROOM</button>
+    <button class="mbtn" data-act="tutorial" id="tutBtn" style="text-align:center">TUTORIAL</button>
     <div class="vsline" id="vsLine"></div>
     <button class="mbtn" data-tab="roll">REROLL STATS</button>
     <button class="mbtn" data-tab="stats">STATS</button>
@@ -338,11 +346,12 @@ body.infight .overlay,body.infight .overlay *{cursor:default}
   <div id="grabHint" class="hidden"></div>
   <div id="healHint" class="hidden"></div>
   <div id="fightInfo" class="hidden"></div>
+  <div id="tutBox" class="hidden"></div>
   <div id="replayBar" class="hidden"><div class="rbt"></div><div class="rbb"><span>▶ KO REPLAY</span><small>click to skip</small></div></div>
   <div id="fatalHint" class="hidden"><b>X</b> FATALITY</div>
   <div id="lockHint" class="hidden">CLICK TO CONTROL THE CAMERA</div>
   <div id="slotbar"></div>
-  <div id="hint"><b>WASD</b> move · <b>Q/E</b> weave · <b>F</b> block · <b>LMB</b> right hook · <b>RMB tap</b> left hook · <b>R</b> uppercut · <b>1-4</b> your moves · <b>Tab</b> next row · <b>Space</b> jump · <b>V</b> parry · <b>G</b> lift &amp; throw · <b>T</b> taunt · <b>Mouse</b> look (shift lock) · <b>Shift</b> toggle shift lock · <b>Wheel</b> zoom · <b>C</b> reset camera · <b>Esc</b> pause</div>
+  <div id="hint"><b>WASD</b> move · <b>Q/E</b> weave · <b>F</b> block · <b>LMB</b> right hook · <b>RMB tap</b> left hook · <b>R</b> uppercut · <b>1-4</b> your moves · <b>Tab</b> next row · <b>Space</b> jump · <b>V</b> parry · <b>G</b> lift &amp; throw · <b>C</b> grab head · <b>T</b> taunt · <b>Mouse</b> look (shift lock) · <b>Shift</b> toggle shift lock · <b>Wheel</b> zoom · <b>C</b> reset camera · <b>Esc</b> pause</div>
 </div>
 <div id="flash"></div>
 <div id="bloodScreen"></div>
@@ -2539,7 +2548,7 @@ class Brain{
   notify(type){
     // bots only sometimes see your punch coming, and never instantly — no more "reading your moves"
     if(this.f.punch&&this.f.punch.p<0.7)return;          // busy attacking: can't also defend
-    if(Math.random()<lerp(0.16,0.55,this.d))this.react={t:lerp(0.34,0.19,this.d)*rand(0.9,1.35),type};
+    if(Math.random()<lerp(0.08,0.42,this.d))this.react={t:lerp(0.34,0.19,this.d)*rand(0.9,1.35),type};
   }
   update(dt,foe){
     const f=this.f,inp={fwd:0,side:0,block:false,punch:null,weave:0};
@@ -2550,7 +2559,7 @@ class Brain{
       this.react.t-=dt;
       if(this.react.t<=0){
         if(foe.punch&&foe.punch.p<(foe.punch.hitP||HIT_P)){
-          if(this.d>0.3&&Math.random()<lerp(0.04,0.24,this.d))this.parryWait=true;
+          if(this.d>0.35&&Math.random()<lerp(0.02,0.14,this.d))this.parryWait=true;
           else if(this.react.type!=='up'&&Math.random()<lerp(0.4,0.65,this.d)&&f.stam>8)inp.weave=Math.random()<0.5?-1:1;
           else if(!f.guardBroken)this.blockHold=rand(0.3,0.65);
         }
@@ -2645,14 +2654,14 @@ G.resolveHit=(a,b,H=null,hitIdx=0)=>{
     a.punch=null;a.comboQueue=null;a.stunT=Math.max(a.stunT,0.95);a.hitReact=0.6;a.hitTwist=P.hand===0?0.6:-0.6;
     a.kb.set(a.pos.x-b.pos.x,0,a.pos.z-b.pos.z).normalize().multiplyScalar(1.6);
     SFX.block(SFX.pan(b.pos));SFX.weaponHit('knuckles',SFX.pan(b.pos));SFX.slip();
-    pop('PARRY!',hp,'counter');comm('PARRIED! WIDE OPEN!',true);if(b===G.player&&G.fs)G.fs.parries++;
+    pop('PARRY!',hp,'counter');comm('PARRIED! WIDE OPEN!',true);if(b===G.player&&G.fs)G.fs.parries++;if(b===G.player&&G.tut)tutEvent('parry');
     spawnParticles(hitPos,14,0xfff6c0,{speed:4,size:0.04,life:0.35});spawnRing(hitPos,0xffe066,0.6);
     G.timeScale=0.35;G.slowT=0.25;impactFrame(0.06);addShake(0.15);
     return;
   }
   // slip (weave dodges hooks; uppercuts catch weaving heads)
   if(b.weaveT>0&&!P.rising){
-    b.counterT=0.8;b.st.slips++;SFX.slip();pop('SLIP!',hp,'slip');comm(pick(COMM.slip));
+    b.counterT=0.8;b.st.slips++;if(b===G.player&&G.tut)tutEvent('slip');SFX.slip();pop('SLIP!',hp,'slip');comm(pick(COMM.slip));
     spawnParticles(hitPos,6,0xbfefff,{speed:2,size:0.035,life:0.3,grav:2});
     return;
   }
@@ -2676,7 +2685,7 @@ G.resolveHit=(a,b,H=null,hitIdx=0)=>{
   if(b.blocking){
     const ig=b.gloveItem.ab==='guard';dmg*=ig?0.075:0.15;b.block-=(P.rising?40:16)*(ig?0.6:1);b.blockDelay=0.6;b.st.blocked++;
     b.hp-=dmg;a.st.dmg+=dmg;b.kb.set(b.pos.x-a.pos.x,0,b.pos.z-a.pos.z).normalize().multiplyScalar(1.2);
-    SFX.block(SFX.pan(b.pos));addShake(0.06);pop('BLOCK',hp,'block');
+    SFX.block(SFX.pan(b.pos));addShake(0.06);pop('BLOCK',hp,'block');if(b===G.player&&G.tut)tutEvent('block');
     spawnParticles(hitPos,8,0xdfe8ff,{speed:2.5,size:0.04,life:0.3});
     if(b.block<=0){b.block=0;G.guardBreak(b);}
     // blocking a really heavy shot can snap the arm
@@ -2696,7 +2705,7 @@ G.resolveHit=(a,b,H=null,hitIdx=0)=>{
   if(DF.armor)dmg*=1-DF.armor;
   // glove abilities
   if(gab==='thunder'||god){a.thunderN=(a.thunderN||0)+1;if(a.thunderN%4===0){dmg+=12*a.d.power;lightning(b);}}
-  b.hp-=dmg;a.st.dmg+=dmg;a.st.landed++;
+  b.hp-=dmg;a.st.dmg+=dmg;a.st.landed++;if(a===G.player&&G.tut)tutEvent('hit',P);
   if(G.mod&&G.mod.vamp)a.hp=Math.min(a.d.maxHP,a.hp+dmg*G.mod.vamp);
   if(gab==='vamp'||god)a.hp=Math.min(a.d.maxHP,a.hp+dmg*0.12);
   if(gab==='fire'||god){if(!(b.burnT>0))pop('ON FIRE!',hp.clone().add(_d.set(0,0.4,0)),'crit');b.burnT=3;}
@@ -2911,8 +2920,14 @@ function headAim(){
   const to=h.sub(camera.position),along=to.dot(_camF);if(along<=0)return false;
   return to.addScaledVector(_camF,-along).length()<0.3*b.d.hScale;
 }
-function startHeadGrab(){
-  const p=G.player,b=G.bot;if(!headAim())return;
+// close enough and facing them (for the C key: no aiming needed)
+function headReach(){
+  const p=G.player,b=G.bot;if(!p||!b||b.rag||b.down||b.invulnT>0||G.lift||G.chunk||p.down||p.rag)return false;
+  const dx=b.pos.x-p.pos.x,dz=b.pos.z-p.pos.z,dl=Math.hypot(dx,dz)||1;if(dl>1.35+0.35*p.d.hScale)return false;
+  return (Math.sin(p.yaw)*dx+Math.cos(p.yaw)*dz)/dl>0.4;
+}
+function startHeadGrab(byKey){
+  const p=G.player,b=G.bot;if(byKey?!headReach():!headAim())return;
   if(b.parryT>0){p.stunT=Math.max(p.stunT,0.5);pop('SLAPPED AWAY!',p.headWorld(new THREE.Vector3()),'block');return;}
   if(!b.rag)b.startRagdoll(_d.set(0,0,0),0);
   b.flopT=99;b.punch=null;b.blocking=false;
@@ -3005,19 +3020,20 @@ function grabAction(){
   const p=G.player,b=G.bot;if(!p||!b||p.down||p.rag||!FIGHT_MODES.includes(G.mode))return null;
   if(G.chunk)return{type:'carry',label:G.chunk.charging?'RELEASE TO THROW':'HOLD TO CHARGE · RELEASE TO THROW · LMB QUICK THROW'};
   if(G.lift)return{type:'carry',label:G.lift.head?`HOLD TO CHARGE · RELEASE TO THROW · LMB/RMB SMASH · ${Math.max(0,Math.ceil(G.lift.dur-G.lift.t))}s`:G.lift.charging?'RELEASE TO THROW':'HOLD TO CHARGE · RELEASE TO THROW'};
-  if(headAim())return{type:'head',key:'HOLD LMB',label:'GRAB THEIR HEAD'};
   const r=G.ref;if(r&&!G.refFight&&r.invulnT<=0&&!r.climb){const rp=r.rag?r.ragdoll.p[2]:r.pos,rd=Math.hypot(rp.x-p.pos.x,rp.z-p.pos.z),bp=b.rag?b.ragdoll.p[2]:b.pos;
     if(rd<1.2&&rd<Math.hypot(bp.x-p.pos.x,bp.z-p.pos.z)&&p.stunT<=0)return{type:'ref',label:'PICK UP THE REF (throw him into them!)'};}
   if(b.ragdoll&&b.ragdoll.decapped)return isBig(p)?(chunkWait()>0?{type:'weak',label:'RIP UP A CHUNK (ready in '+Math.ceil(chunkWait())+'s)'}:{type:'chunk',label:'RIP UP A CHUNK OF THE RING'}):null;
   const tgt=b.rag?b.ragdoll.p[2]:b.pos,dist=Math.hypot(tgt.x-p.pos.x,tgt.z-p.pos.z);
   if(dist>1.35||b.invulnT>0||p.stunT>0)return isBig(p)&&p.stunT<=0?(chunkWait()>0?{type:'weak',label:'RIP UP A CHUNK (ready in '+Math.ceil(chunkWait())+'s)'}:{type:'chunk',label:'RIP UP A CHUNK OF THE RING'}):null;
-  return vulnerable(b)||fightStyle().grabAny?{type:'lift',label:'PICK THEM UP'}:{type:'weak',label:'PICK UP (weaken them first!)'};
+  if(vulnerable(b)||fightStyle().grabAny)return{type:'lift',label:'PICK THEM UP · C GRAB HEAD'};
+  return headReach()?{type:'head',key:'C',label:'GRAB THEIR HEAD'}:{type:'weak',label:'PICK UP (weaken them first!)'};
 }
 function startLift(){
   const p=G.player,b=G.bot,A=grabAction();if(!A)return;
   if(A.type==='weak'&&A.label.startsWith('RIP')){pop('WAIT '+Math.ceil(chunkWait())+'s',p.headWorld(new THREE.Vector3()),'block');SFX.lose();return;}
   if(A.type==='weak'){p.stunT=Math.max(p.stunT,0.35);SFX.whoosh();pop('TOO STRONG — WEAKEN THEM FIRST',p.headWorld(new THREE.Vector3()),'block');return;}
   if(A.type==='chunk'){ripChunk();return;}
+  if(A.type==='head'){startHeadGrab(true);return;}
   if(A.type==='ref'){const r=G.ref;if(!r.rag)r.startRagdoll(_d.set(0,0,0),0);r.flopT=99;r.punch=null;
     r.ragdoll.pins=[{idx:2,target:new THREE.Vector3()},{idx:1,target:new THREE.Vector3()}];
     G.lift={b:r,charge:0,charging:false,t:0,ref:true};p.lifting=true;p.punch=null;p.blocking=false;
@@ -3494,7 +3510,81 @@ function updateReplay(rdt){
   const R=G.rp;if(!R)return;R.t+=rdt*60*0.45;const i=R.start+Math.floor(R.t);
   if(i>R.end){endReplay();return;}applyReplay(REPLAY.frames[i]);
 }
+/* ---------- TUTORIAL: a guided lesson in the training room, one move at a time ---------- */
+const K=k=>`<kbd>${k}</kbd>`;
+const TUT_STEPS=[
+  {t:'WELCOME, ROOKIE',x:`This is the training room. The dummy can't knock you out, so relax. We'll go through every move and every part of the screen. Press ${K('ENTER')} to continue.`,info:1},
+  {t:'YOUR BARS',x:`Top left is you, top right your opponent. <b>HP</b>: hit zero and you're knocked down. <b>STAMINA</b>: every punch costs some, it refills when you rest. <b>BLOCK</b>: blocking drains it — empty means your guard breaks. The diamonds next to the name count knockdowns: first to 3 wins.`,info:1,hl:['pHpBar','pBlBar','pPips','ePips']},
+  {t:'MIDDLE OF THE SCREEN',x:`The round number and the timer are in the middle, with the commentator under them. A round only ends when someone hits the canvas — or when time runs out. Press ${K('ENTER')}.`,info:1,hl:['round','timer']},
+  {t:'MOVE',x:`Walk around with ${K('W')}${K('A')}${K('S')}${K('D')}. You move relative to where the camera looks.`,goal:'move',n:4},
+  {t:'LOOK AROUND',x:`Move the mouse to turn the camera — you turn with it. ${K('Shift')} turns shift lock off and on (off: hold the right mouse button to orbit the camera). Turn around now.`,goal:'look',n:1},
+  {t:'RIGHT HOOK',x:`Walk up to the dummy and click the <b>left mouse button</b> to throw a right hook. Land 2.`,goal:'right',n:2},
+  {t:'LEFT HOOK',x:`Tap the <b>right mouse button</b> for a left hook. Land 2.`,goal:'left',n:2},
+  {t:'UPPERCUT',x:`Press ${K('R')} for an uppercut. It's slower but hits harder, and it catches people who duck. Land 2.`,goal:'upper',n:2},
+  {t:'CHARGED PUNCH',x:`<b>Hold</b> a mouse button (or ${K('R')}) — a ring fills in the middle of the screen — then let go. A full charge hits more than twice as hard. Land 1 charged punch.`,goal:'charge',n:1,hl:['chgRing']},
+  {t:'JUMP & AERIAL HITS',x:`${K('Space')} jumps. Punch while you're in the air for an <b>AERIAL</b> hit (+30%). Running into a punch or whipping round into it adds even more. Land 1 aerial hit.`,goal:'aerial',n:1},
+  {t:'YOUR MOVES',x:`The bar at the bottom holds your special moves: ${K('1')}–${K('4')} use them, ${K('Tab')} flips to the next row of four. Buy moves in the <b>MOVE SHOP</b>. Press ${K('ENTER')}.`,info:1,hl:['slotbar']},
+  {t:'BLOCK',x:`Now the dummy fights back. Hold ${K('F')} to block. Block 3 punches — and watch your BLOCK bar.`,goal:'block',n:3,atk:1,hl:['pBlBar']},
+  {t:'SLIP',x:`${K('Q')} and ${K('E')} weave left and right. Time it as a hook comes in to <b>SLIP</b> it — then punch straight away for a +50% counter. Slip 2 punches.`,goal:'slip',n:2,atk:1},
+  {t:'PARRY',x:`Tap ${K('V')} right before a punch lands to <b>PARRY</b> it: their punch is knocked away and they're wide open. Parry 1 punch.`,goal:'parry',n:1,atk:1},
+  {t:'PICK THEM UP',x:`When someone is dazed, hurt or stunned you can grab them. The dummy is dazed now: walk up close and press ${K('G')}. (A tip appears at the bottom when you can.)`,goal:'lift',n:1,hl:['grabHint']},
+  {t:'THROW OR SLAM',x:`While you hold them: <b>hold</b> ${K('G')} to charge and let go to throw them where you're looking (a ring shows where they land) — or click the mouse to slam them into the floor. Throw them!`,goal:'throw',n:1},
+  {t:'HEAD GRAB',x:`Get close, face them and press ${K('C')} to grab them by the head (holding the left mouse button with the dot on their head works too). Then throw them with ${K('G')}, or click to smash them down. Grab a head!`,goal:'head',n:1},
+  {t:'THE REFEREE',x:`Don't hit the ref! Two warnings, then a third hit means he fights you after the match. You can also pick him up and throw him into your opponent — that counts as a warning too. In the ref fight, ${K('H')} heals you (twice). Press ${K('ENTER')}.`,info:1},
+  {t:'WINNING',x:`Knock them down 3 times to win. After the final knockdown, <b>FINISH THEM!</b> appears — press ${K('X')} for a fatality. Before most fights you'll see a <b>twist</b> and a <b>bonus challenge</b> at the top of the screen for extra coins. Press ${K('ENTER')}.`,info:1},
+  {t:'THE MENU',x:`Back in the menu: <b>REROLL STATS</b> spins your body (every 10th spin is lucky) · <b>CUSTOMIZE</b> your look and fighting style · <b>MOVE SHOP</b> · <b>CRATES</b> for gloves, skins, powers and accessories · <b>INVENTORY</b> to equip them · <b>LEVELS</b> (every 12th is a title fight) · <b>GAME MODES</b> and daily challenges · <b>CHARACTERS</b> · <b>SETTINGS</b> (first person, gore). Press ${K('ENTER')} to finish!`,info:1},
+];
+function startTutorial(){
+  SFX.init();SFX.click();startFight(-1,{training:true});
+  G.tut={i:0,prog:0,done:false,doneT:0,last:G.player.pos.clone(),yaw0:G.slYaw||0,atkT:2};
+  $('round').textContent='TUTORIAL';renderTut();
+}
+function tutEvent(type,P){
+  const T=G.tut;if(!T||T.done)return;const st=TUT_STEPS[T.i];if(!st||!st.goal)return;
+  let ok=false;
+  if(type==='hit'&&P){ok=st.goal==='right'?P.hand===0&&!P.rising&&!P.kick:st.goal==='left'?P.hand===1&&!P.rising&&!P.kick:st.goal==='upper'?!!P.rising:st.goal==='charge'?(P.chg||0)>0.55:st.goal==='aerial'?!!P.aerial:false;}
+  else ok=st.goal===type;
+  if(ok)tutProgress(1);
+}
+function tutProgress(n){const T=G.tut,st=TUT_STEPS[T.i];T.prog=Math.min(st.n,T.prog+n);if(T.prog>=st.n&&!T.done){T.done=true;T.doneT=1.1;SFX.reveal(85);pop('✓ NICE!',G.player.headWorld(new THREE.Vector3()).add(_d.set(0,0.4,0)),'counter');}renderTut();}
+function tutNext(){
+  const T=G.tut;if(!T)return;const st=TUT_STEPS[T.i];if(st&&st.goal&&!T.done)return;
+  T.i++;T.prog=0;T.done=false;T.doneT=0;T.last=G.player.pos.clone();T.yaw0=G.slYaw||0;T.atkT=1.5;
+  if(T.i>=TUT_STEPS.length){finishTutorial();return;}SFX.click();renderTut();
+}
+function finishTutorial(){
+  const first=!save.tutDone;save.tutDone=true;if(first){save.coins+=150;save.rerolls+=2;}saveGame();
+  G.tut=null;$('tutBox').classList.add('hidden');document.querySelectorAll('.tutHL').forEach(e=>e.classList.remove('tutHL'));
+  toMenu();if(first)setTimeout(()=>{bigText('TUTORIAL DONE! +150 🪙 +2 REROLLS','gold');SFX.cheer(1.5);},100);
+}
+function renderTut(){
+  const T=G.tut,el=$('tutBox');if(!T){el.classList.add('hidden');return;}const st=TUT_STEPS[T.i];
+  document.querySelectorAll('.tutHL').forEach(e=>e.classList.remove('tutHL'));(st.hl||[]).forEach(id=>{const e=$(id);if(e)e.classList.add('tutHL');});
+  el.innerHTML=`<div class="tstep">TUTORIAL · STEP ${T.i+1} / ${TUT_STEPS.length}</div><h3>${st.t}</h3><div>${st.x}</div>
+    ${st.goal?`<div class="tprog"><i style="width:${T.prog/st.n*100}%"></i></div><div class="tfoot"><span class="${T.done?'tdone':''}">${T.done?'✓ DONE':T.prog+' / '+st.n}</span><span>${K('Esc')} pause / quit</span></div>`
+      :`<div class="tfoot" style="margin-top:10px"><span>${K('ENTER')} next</span><span>${K('Esc')} pause / quit</span></div>`}`;
+  el.classList.remove('hidden');
+}
+function updateTutorial(dt){
+  const T=G.tut;if(!T||G.mode!=='fight')return;const st=TUT_STEPS[T.i],p=G.player,b=G.bot;
+  if(T.done){T.doneT-=dt;if(T.doneT<=0)tutNext();return;}
+  if(!st.goal)return;
+  if(st.goal==='move'){const d=distXZ(p.pos,T.last);if(d>0.05){T.last.copy(p.pos);T.acc=(T.acc||0)+d;if(Math.floor(T.acc)>T.prog)tutProgress(Math.floor(T.acc)-T.prog);}}
+  if(st.goal==='look'){let dy=Math.abs(((G.slYaw||0)-T.yaw0+Math.PI*3)%(Math.PI*2)-Math.PI);if(dy>2.2)tutProgress(1);}
+  if(st.goal==='lift'){if(!G.lift&&!b.rag){b.stunT=Math.max(b.stunT,0.6);b.daze=Math.max(b.daze||0,60);}if(G.lift)tutProgress(1);}
+  if(st.goal==='head'&&G.lift&&G.lift.head)tutProgress(1);
+  if(st.goal==='throw'){if(!G.lift&&!b.thrown&&!b.rag){b.stunT=Math.max(b.stunT,0.6);b.daze=Math.max(b.daze||0,60);}if(b.thrown)tutProgress(1);}
+}
+// the dummy only throws slow, single punches during the defence lessons
+function tutBrain(dt,foe){
+  const T=G.tut,st=TUT_STEPS[T.i]||{},f=G.bot,inp={fwd:0,side:0,block:false,punch:null,weave:0};
+  if(!st.atk||foe.rag||foe.down)return inp;
+  const dist=distXZ(f.pos,foe.pos),range=f.d.range;inp.fwd=dist>range*0.85?0.7:dist<range*0.5?-0.5:0;
+  T.atkT-=dt;if(T.atkT<=0&&dist<=range*1.05){inp.punch=Math.random()<0.5?'rh':'lh';T.atkT=rand(1.6,2.2);}
+  return inp;
+}
 function startFight(idx,opts={}){
+  G.tut=null;$('tutBox').classList.add('hidden');document.querySelectorAll('.tutHL').forEach(e=>e.classList.remove('tutHL'));
   G.training=!!opts.training;
   if(!G.training&&!opts.custom&&!opts.run&&!unlocked(idx))return;
   G.run=opts.run||null;
@@ -3512,9 +3602,9 @@ function startFight(idx,opts={}){
   if(G.run&&G.run.type==='surv')G.mod={name:'SUDDEN DEATH',desc:'One knockdown ends it',sudden:true};
   G.chal=!G.training&&idx>=1?pick(CHALLENGES):null;G.fs=freshFS();
   const mapId=G.training||idx<2?'classic':G.champ?pick(['volcano','rooftop','pit']):pick(MAP_IDS.filter(m=>m!==G.mapId));applyMap(mapId);
-  if(!G.training&&!B.raw){boosted.height=Math.min(130,Math.max(B.stats.height+30,(save.stats.height||50)+12));boosted.weight=Math.min(100,B.stats.weight+20);boosted.body=Math.min(100,B.stats.body+18);boosted.stamina=Math.min(100,B.stats.stamina+14);boosted.reach=Math.min(100,B.stats.reach+8);
+  if(!G.training&&!B.raw){boosted.height=Math.min(130,Math.max(B.stats.height+30,(save.stats.height||50)+12));boosted.weight=Math.min(100,B.stats.weight+6);boosted.body=Math.min(100,B.stats.body+5);boosted.stamina=Math.min(100,B.stats.stamina+5);boosted.reach=Math.min(100,B.stats.reach+2);
     if(G.mod.giant){boosted.height=230;boosted.weight=100;boosted.body=100;}if(G.mod.prize)STAT_KEYS.forEach(k=>boosted[k]=Math.min(100,boosted[k]+10));}
-  G.bot=new Fighter(boosted,{name:B.name,...B.look});G.brain=new Brain(G.bot,G.training?B.diff:Math.min(1,B.diff+0.25));
+  G.bot=new Fighter(boosted,{name:B.name,...B.look});G.brain=new Brain(G.bot,G.training?B.diff:Math.min(1,B.diff+0.05));
   G.brain.moveSpecs=(B.moves||[]).filter(id=>TEMPLATES[id]).map(id=>customSpec(buildShopMove(id)));
   if(B.refBoss)G.brain.refBoss={whistle:3,yellow:2,red:6,tele:null,rage:0};
   G.bot.setWeapon(!G.training&&save.gameMode==='sword'?'katana':B.weapon||'none');G.bot.setGear(B.glove||'basic',B.skinType||'normal');G.bot.setPower(G.training?'none':B.powers||B.power||'none');
@@ -3528,7 +3618,7 @@ function startFight(idx,opts={}){
   clearDecals();G.decapped=false;resetArena();
   if(G.ref)G.ref.dispose();
   if(!G.training){G.ref=new Fighter({height:50,weight:35,reach:40,body:35,stamina:50},REF_LOOK);G.ref.relaxed=true;G.ref.pos.set(2.2,0,0);}else G.ref=null;
-  player.hpMul=1+((player.accBonus||{}).hp||0);G.bot.hpMul=1;{const ax=player.accBonus||{};player.d.power*=1+(ax.dmg||0);player.d.speed*=1+(ax.speed||0);}if(!G.training){G.bot.hpMul=B.raw?1:G.mod.giant?1.35:1.12;G.bot.d.power*=1.1;if(G.mod.setup)G.mod.setup(player,G.bot);}
+  player.hpMul=1+((player.accBonus||{}).hp||0);G.bot.hpMul=1;{const ax=player.accBonus||{};player.d.power*=1+(ax.dmg||0);player.d.speed*=1+(ax.speed||0);}if(!G.training){G.bot.hpMul=B.raw?1:G.mod.giant?1.35:1;if(G.mod.setup)G.mod.setup(player,G.bot);}
   applyBuffs(player,(save.chars[save.charIdx]||{}).buffs);
   if(fightStyle().hp)player.hpMul*=fightStyle().hp;if(fightStyle().speed)player.d.speed*=fightStyle().speed;if(fightStyle().stam)player.d.stamRegen*=fightStyle().stam;
   addBelt(G.bot,G.champ?G.champ.col:null);const myBelt=bestBelt();addBelt(player,myBelt?myBelt[2]:null);
@@ -3623,7 +3713,7 @@ function showResult(){
   if(R.win&&G.botIdx<BOTS.length-1&&!G.wasRun)save.selected=G.botIdx+1;saveGame();
 }
 function toMenu(){
-  G.mode='menu';document.body.classList.remove('infight');crowd.bodies.visible=crowd.heads.visible=true;G.training=false;$('grabHint').classList.add('hidden');$('healHint').classList.add('hidden');$('fightInfo').classList.add('hidden');$('fatalHint').classList.add('hidden');$('replayBar').classList.add('hidden');clearDrops();G.run=null;G.rp=null;G.mod={};G.chal=null;G.champ=null;G.fatal=null;applyMap('classic');addBelt(player,null);G.wantLock=false;unlockMouse();
+  G.mode='menu';document.body.classList.remove('infight');crowd.bodies.visible=crowd.heads.visible=true;G.training=false;$('grabHint').classList.add('hidden');$('healHint').classList.add('hidden');$('fightInfo').classList.add('hidden');$('fatalHint').classList.add('hidden');$('replayBar').classList.add('hidden');clearDrops();G.run=null;G.rp=null;G.mod={};G.tut=null;$('tutBox').classList.add('hidden');document.querySelectorAll('.tutHL').forEach(e=>e.classList.remove('tutHL'));G.chal=null;G.champ=null;G.fatal=null;applyMap('classic');addBelt(player,null);G.wantLock=false;unlockMouse();
   $('result').classList.add('hidden');$('pause').classList.add('hidden');$('hud').classList.add('hidden');$('menu').classList.remove('hidden');
   $('mash').classList.add('hidden');$('count').textContent='';$('big').className='';
   if(G.bot){G.bot.dispose();G.bot=null;}
@@ -3663,7 +3753,7 @@ addEventListener('keydown',e=>{
   }
   if(e.code==='Space'){e.preventDefault();if((G.mode==='fight'||G.mode==='intro')&&!e.repeat)pending.jump=0.15;}
   if(e.code==='KeyV'&&(G.mode==='fight'||G.mode==='intro')&&!e.repeat)pending.parry=0.12;
-  if(e.code==='KeyC'&&FIGHT_MODES.includes(G.mode)){resetCam();}
+  if(e.code==='KeyC'&&FIGHT_MODES.includes(G.mode)){if(!e.repeat&&G.mode==='fight'&&!G.paused&&headReach())startHeadGrab(true);else resetCam();}
   if(e.code==='Tab'&&FIGHT_MODES.includes(G.mode)){e.preventDefault();if(!e.repeat&&!G.paused){setMoveRow(save.moveRow+1);renderSlotbar();SFX.tick();
     const el=$('slotbar');el.classList.remove('flip');void el.offsetWidth;el.classList.add('flip');pop('MOVE ROW '+(save.moveRow+1),G.player.headWorld(new THREE.Vector3()),'block');}}
   if((e.code==='ShiftLeft'||e.code==='ShiftRight')&&!e.repeat&&FIGHT_MODES.includes(G.mode)&&!G.paused&&!save.fpv){
@@ -3671,6 +3761,7 @@ addEventListener('keydown',e=>{
     pop(G.shiftLock?'SHIFT LOCK ON':'SHIFT LOCK OFF',G.player.headWorld(new THREE.Vector3()),'block');}
   if(e.code==='KeyG'&&!e.repeat&&FIGHT_MODES.includes(G.mode)){grabKeyDown();}
   if(e.code==='KeyH'&&!e.repeat&&G.mode==='fight'&&!G.paused)useHeal();
+  if(e.code==='Enter'&&!e.repeat&&G.tut&&FIGHT_MODES.includes(G.mode)&&!G.paused){tutNext();e.preventDefault();}
   if(e.code==='KeyX'&&!e.repeat&&G.mode==='ko'&&G.fatal&&!G.fatal.done&&G.t<4.2)doFatality();
   if(e.code==='Escape'&&performance.now()-(G.lockPauseT||0)>350){
     if(G.mode==='fight'||G.mode==='intro'||G.mode==='knock'||G.mode==='roundEnd'){G.paused=!G.paused;$('pause').classList.toggle('hidden',!G.paused);if(G.paused)unlockMouse();else lockMouse();}
@@ -3821,7 +3912,8 @@ function updateFight(dt){
     if(!G.training)G.time-=dt;
     const pi=playerInput(dt);
     p.update(dt,b,pi,G);if(pi.punchUsed){pending.punch=null;pending.chg=0;}if(pi.tauntUsed)pending.taunt=0;if(pi.parryUsed)pending.parry=0;if(pi.jumpUsed)pending.jump=0;if(p.weaveT>0)pending.weave=0;
-    if(G.mode==='fight')b.update(dt,p,G.brain.update(dt,p),G);
+    if(G.mode==='fight')b.update(dt,p,G.tut?tutBrain(dt,p):G.brain.update(dt,p),G);
+    updateTutorial(dt);
     if(G.fs){G.fs.time+=dt;if(p.blocking)G.fs.blocked=true;}
     if(G.mod&&G.mod.regen&&!b.rag&&!b.down)b.hp=Math.min(b.d.maxHP,b.hp+b.d.maxHP*0.012*dt);
     if(!b.rag)separate(p,b);
@@ -4095,7 +4187,7 @@ function tabControls(){
   return `<h2>CONTROLS</h2><p class="sub">You always face your opponent.</p>
   ${k('W A S D','Move / circle around')}${k('Q / E','Weave left / right — dodges hooks')}${k('F (hold)','Block — drains the block bar')}
   ${k('LEFT CLICK','Right hook')}${k('RIGHT CLICK','Left hook (tap — holding and dragging moves the camera)')}${k('R','Uppercut — beats weaves, wrecks blocks')}
-  ${k(save.moveKeys.map(keyName).join(' '),'Your moves (buy them in the Move Shop, rebind there)')}${k('TAB','Switch to your next row of 4 moves')}${k('SPACE','Jump — punches in the air hit 30% harder')}${k('V','Parry — tap right before a punch lands to stop it and leave them wide open')}${k('G','Lift a weakened opponent over your head (stunned, dazed, guard broken, low HP, frozen or down). Hold G to charge, release to throw them where your camera is looking')}${k('T','Taunt — refills stamina, but leaves you open')}${k('MOUSE','Shift lock (default): the mouse turns the camera and your boxer faces where you look — punches only land on what you face')}${k('SHIFT','Toggle shift lock. With it off: hold right mouse + drag to spin the camera 360°')}${k('WHEEL','Zoom camera in / out')}${k('ARROWS','Spin / tilt the camera with the keyboard')}${k('C','Snap camera back behind you')}${k('ESC','Pause (frees the mouse)')}
+  ${k(save.moveKeys.map(keyName).join(' '),'Your moves (buy them in the Move Shop, rebind there)')}${k('TAB','Switch to your next row of 4 moves')}${k('SPACE','Jump — punches in the air hit 30% harder')}${k('V','Parry — tap right before a punch lands to stop it and leave them wide open')}${k('G','Lift a weakened opponent over your head (stunned, dazed, guard broken, low HP, frozen or down). Hold G to charge, release to throw them where your camera is looking')}${k('C','Grab them by the head when you are close and facing them. Throw with G, click to smash them down. (When nobody is close, C resets the camera.)')}${k('T','Taunt — refills stamina, but leaves you open')}${k('MOUSE','Shift lock (default): the mouse turns the camera and your boxer faces where you look — punches only land on what you face')}${k('SHIFT','Toggle shift lock. With it off: hold right mouse + drag to spin the camera 360°')}${k('WHEEL','Zoom camera in / out')}${k('ARROWS','Spin / tilt the camera with the keyboard')}${k('C','Snap camera back behind you')}${k('ESC','Pause (frees the mouse)')}
   <div class="tipbox"><b>Rules:</b> every knockdown ends the round — <b>first to 3 knockdowns wins</b>. You win a round only by emptying their <b>HP to 0</b>. Big shots send fighters flying for a moment, a dazed fighter (stars) goes sprawling, and heavy hits can break bones or take limbs off.
   <br><b>Tips:</b> Slip a hook with Q/E or <b>parry with V</b>, then punch right away for a +50% COUNTER. Spamming punches tires you out and missing leaves you off balance. Holding block too long breaks your guard. Punching with no stamina is slow and weak.</div>`;
 }
@@ -4586,6 +4678,7 @@ function renderMenu(){
   const sel=BOTS[save.selected]&&unlocked(save.selected)?save.selected:0;save.selected=sel;
   $('vsLine').innerHTML=`vs <b>${BOTS[sel].name}</b>`;
   $('lvBox').innerHTML=`<div style="margin-bottom:6px"><span class="ttl" style="--tc:${rankOf(save.chars[save.charIdx].rank)[2]}">${rankOf(save.chars[save.charIdx].rank)[1]}</span>${titleHTML(save,save.powers.length>0)}</div><div class="sub" style="margin:0 0 4px;font-size:11px">${fightStyle().icon} ${fightStyle().name} · 📅 ${ensureDaily().tasks.filter(t=>t.done).length}/3 daily</div><div class="coinline">🪙 <b>${save.coins}</b> coins</div><div class="lvtop">LEVEL ${save.level}<span>${save.rerolls} REROLLS</span></div><div class="xpbar"><i style="width:${save.xp/xpNeed(save.level)*100}%"></i></div><small>${save.xp} / ${xpNeed(save.level)} XP to next level</small>`;
+  $('tutBtn').classList.toggle('new',!save.tutDone);$('tutBtn').textContent=save.tutDone?'TUTORIAL':'TUTORIAL · NEW? START HERE';
   const r=save.record;$('recLine').innerHTML=`<b>${r.w}</b>W · <b>${r.l}</b>L · <b>${r.ko}</b> KO`;
   if(tab==='opps'){openPreview(sel);const el=document.querySelector('.opp.sel');if(el)el.scrollIntoView({block:'center'});}else closePreview();
   if(tab!=='moves'){mtStop();MT.binding=-1;}
@@ -4606,6 +4699,7 @@ document.querySelectorAll('[data-tab]').forEach(b=>{
 });
 document.querySelector('[data-act=fight]').addEventListener('click',()=>{SFX.init();SFX.click();startFight(save.selected);});
 document.querySelector('[data-act=training]').addEventListener('click',()=>{SFX.init();SFX.click();startFight(-1,{training:true});});
+document.querySelector('[data-act=tutorial]').addEventListener('click',startTutorial);
 $('tabPanel').addEventListener('click',e=>{
   const t=e.target.closest('button,[data-col],[data-opp],[data-weapon],[data-item]');if(!t)return;
   if(t.dataset.crate){openCrate(t.dataset.crate);return;}
