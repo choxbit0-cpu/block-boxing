@@ -195,6 +195,7 @@ input[type=range]{width:100%}
 .inj span{font:800 9.5px Rubik,sans-serif;letter-spacing:.5px;padding:2px 6px;border-radius:5px;background:rgba(160,0,0,.75);color:#fff;text-shadow:0 1px 0 #000}
 .inj span.cut{background:#5a0000;border:1px solid #ff3030}
 #lockHint{position:absolute;left:50%;top:44%;transform:translateX(-50%);font:800 13px Rubik,sans-serif;color:#fff;background:rgba(0,0,0,.6);padding:8px 16px;border-radius:20px;border:1px solid var(--gold);pointer-events:none}
+#replayBar{position:fixed;inset:0;pointer-events:none;z-index:7}#replayBar .rbt,#replayBar .rbb{position:absolute;left:0;right:0;height:11%;background:#000}#replayBar .rbt{top:0}#replayBar .rbb{bottom:0;display:flex;align-items:center;justify-content:space-between;padding:0 28px;font:900 22px Bungee,Impact,sans-serif;color:#ff4a3a}#replayBar small{font:600 12px Rubik,sans-serif;color:#aaa}
 #fightInfo{position:absolute;left:50%;top:84px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none}
 #fightInfo div{font:700 12px Rubik,sans-serif;color:#fff;background:rgba(0,0,0,.55);padding:4px 11px;border-radius:14px;border:1px solid rgba(255,255,255,.2);white-space:nowrap}
 #fightInfo .tw{border-color:rgba(255,197,49,.6)}#fightInfo .tw b{color:#ffc531}#fightInfo .ch b{color:#7ab0ff}#fightInfo .ch.done{border-color:#5fdc6a}#fightInfo .ch.done b{color:#5fdc6a}#fightInfo .ch.fail{opacity:.5}
@@ -279,6 +280,8 @@ body.infight .overlay,body.infight .overlay *{cursor:default}
     <button class="mbtn" data-tab="crates">CRATES</button>
     <button class="mbtn" data-tab="inventory">INVENTORY</button>
     <button class="mbtn" data-tab="opps">LEVELS</button>
+    <button class="mbtn" data-tab="modes">GAME MODES</button>
+    <button class="mbtn" data-tab="chars">CHARACTERS</button>
     <button class="mbtn" data-tab="controls">CONTROLS</button>
     <button class="mbtn" data-tab="settings">SETTINGS</button>
     <div class="lvbox" id="lvBox"></div>
@@ -335,6 +338,7 @@ body.infight .overlay,body.infight .overlay *{cursor:default}
   <div id="grabHint" class="hidden"></div>
   <div id="healHint" class="hidden"></div>
   <div id="fightInfo" class="hidden"></div>
+  <div id="replayBar" class="hidden"><div class="rbt"></div><div class="rbb"><span>▶ KO REPLAY</span><small>click to skip</small></div></div>
   <div id="fatalHint" class="hidden"><b>X</b> FATALITY</div>
   <div id="lockHint" class="hidden">CLICK TO CONTROL THE CAMERA</div>
   <div id="slotbar"></div>
@@ -459,6 +463,9 @@ function normalizeSave(raw){
   s.moveRows=s.moveRows.map(r=>Array.isArray(r)&&r.length===4?r:[null,null,null,null]);
   s.moveRow=clamp(s.moveRow|0,0,3);s.moves=s.moveRows[s.moveRow];
   if(!Array.isArray(s.ownedMoves))s.ownedMoves=[];
+  if(!Array.isArray(s.chars)||!s.chars.length){s.chars=[{stats:s.stats,look:s.look,locks:s.locks||{},rank:'common'}];s.charIdx=0;}
+  s.charIdx=clamp(s.charIdx|0,0,s.chars.length-1);s.charSlots=Math.max(3,s.charSlots|0);
+  s.stats=s.chars[s.charIdx].stats||s.stats;s.look={...DEFAULT_LOOK,...(s.chars[s.charIdx].look||s.look)};s.locks=s.chars[s.charIdx].locks||s.locks||{};
   ['speed','durability'].forEach(k=>{if(s.stats[k]==null)s.stats[k]=rollStat();});
   if(!s.inv||typeof s.inv!=='object')s.inv={gloves:{basic:1},skins:{normal:1}};if(!s.inv.powers)s.inv.powers={none:1};if(!s.inv.acc)s.inv.acc={};if(!s.acc||typeof s.acc!=='object')s.acc={};if(!s.power)s.power='none';
   if(!Array.isArray(s.powers))s.powers=s.power!=='none'?[s.power]:[];s.powers=s.powers.filter(id=>id!=='none'&&s.inv.powers[id]).slice(0,3);
@@ -476,7 +483,7 @@ let pushTimer=0;
 function writeLocal(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(save));}catch(e){}}
 function pushServer(){clearTimeout(pushTimer);pushTimer=0;if(!SERVER_SAVE)return;
   fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(save),keepalive:true}).catch(()=>{});}
-function saveGame(){save.savedAt=Date.now();writeLocal();clearTimeout(pushTimer);pushTimer=setTimeout(pushServer,400);}
+function saveGame(){if(save.chars&&save.chars[save.charIdx]){const c=save.chars[save.charIdx];c.stats=save.stats;c.look=save.look;c.locks=save.locks;}save.savedAt=Date.now();writeLocal();clearTimeout(pushTimer);pushTimer=setTimeout(pushServer,400);}
 function flushSave(){writeLocal();if(SERVER_SAVE){try{navigator.sendBeacon('/api/save',new Blob([JSON.stringify(save)],{type:'application/json'}));}catch(e){pushServer();}}}
 addEventListener('pagehide',flushSave);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushSave();});
@@ -509,7 +516,47 @@ const WEAPONS=[
   {id:'katana',name:'Katana',desc:'Fast, long and razor sharp. Everything bleeds.',dmg:1.6,range:0.55,speed:1.05,bleed:1,decap:1,both:false,unlock:{level:8,beaten:7}},
 ];
 const weaponById=id=>WEAPONS.find(w=>w.id===id)||WEAPONS[0];
-const GAME_MODES={classic:{name:'CLASSIC',icon:'🥊',desc:'Boxing with everything you own.'},sword:{name:'SWORDSMAN',icon:'⚔️',desc:'Only swords: both fighters get katanas, no kicks. Pure steel.'}};
+const GAME_MODES={classic:{name:'CLASSIC',icon:'🥊',desc:'Boxing with everything you own.'},sword:{name:'SWORDSMAN',icon:'⚔️',desc:'Only swords: both fighters get katanas, no kicks. Pure steel.'},
+  kicks:{name:'KICKS ONLY',icon:'🦵',desc:'No punches: your buttons throw kicks instead, and punch moves are off.'},
+  sumo:{name:'SUMO',icon:'🟤',desc:'No ropes. Knock them out of the ring and you win on the spot.'},
+  weapons:{name:'WEAPONS ARENA',icon:'🗡️',desc:'Weapons drop into the ring — grab one by walking over it.'}};
+const _kickSpecs={};const kickSpec=id=>_kickSpecs[id]||(_kickSpecs[id]=TEMPLATES[id]?customSpec(buildShopMove(id)):BASIC.rh);
+const isKickSpec=sp=>!!sp&&(sp.kick||sp.hits&&sp.hits.some&&sp.hits.some(h=>h&&h.kick));
+/* ---------- FIGHTING STYLES ---------- */
+const STYLES={
+  boxer:{name:'BOXER',icon:'🥊',desc:'Punches hit 12% harder and come out 8% faster.',punch:1.12,spd:1.08,sig:['Four-Piece','1-2-Hook','Six-Piece','Hundred Fists']},
+  karate:{name:'KARATEKA',icon:'🥋',desc:'Kicks hit 30% harder. Karate moves are your signature.',kick:1.3,sig:['Karate Chop','Palm Strike','Crane Kick','Spinning Back Kick','Kiai Combo','Dragon Kicks']},
+  muaythai:{name:'MUAY THAI',icon:'🇹🇭',desc:'Knees, elbows and kicks hit 20% harder, +20% stamina regen.',kick:1.2,stam:1.2,sig:['Elbow Smash','Knee Strike','Elbow-Knee','Knee Barrage','Knee-Uppercut','Flying Knee']},
+  wrestler:{name:'WRESTLER',icon:'🤼',desc:'Pick anyone up (no need to weaken them). Throws and slams do 50% more.',throw:1.5,grabAny:true,punch:0.95},
+  brawler:{name:'BRAWLER',icon:'👊',desc:'Everything hits 15% harder and you have 8% more HP, but 7% slower.',all:1.15,hp:1.08,speed:0.93,sig:['Haymaker','Overhand','Hammer Fist']}};
+const fightStyle=()=>STYLES[save.style]||STYLES.boxer;
+/* ---------- BOSS RUSH bosses ---------- */
+const RUSH_BOSSES=[
+  {name:'THE GIANT',blurb:'Four metres of bad news.',raw:true,boss:true,diff:0.6,stats:{height:330,weight:220,reach:200,body:320,stamina:200,speed:40,durability:150},glove:'titan',skinType:'stone',moves:['hammerfist','meteor','haymaker'],
+    look:{skin:'#8e8b84',hair:'#222',hairStyle:'bald',shorts:'#3a3a40',gloves:'#7b8794',shoes:'#222',shirt:'none',band:false}},
+  {name:'THE MUTANT',blurb:'Something went very wrong in the lab.',raw:true,boss:true,diff:0.75,stats:{height:150,weight:170,reach:150,body:190,stamina:200,speed:170,durability:120},glove:'sludge',skinType:'radioactive',powers:['overlord','timewarp','regen'],moves:['axestorm','dragonupper'],
+    look:{skin:'#5aff00',hair:'#1a3a00',hairStyle:'mohawk',shorts:'#1a3a00',gloves:'#7aff3a',shoes:'#111',shirt:'none',band:true}},
+  {name:'THE NINJA',blurb:'You will not see the first strike.',raw:true,boss:true,diff:0.85,stats:{height:95,weight:100,reach:150,body:120,stamina:240,speed:320,durability:90},weapon:'katana',glove:'black',skinType:'shadow',powers:['phantom','crit'],moves:['tornado','backkick','dragonkicks'],
+    look:{skin:'#18141f',hair:'#111',hairStyle:'buzz',shorts:'#111111',gloves:'#111111',shoes:'#111',shirt:'tank',shirtColor:'#111111',band:true}},
+  {name:'THE REFEREE',blurb:'The final boss. He makes the rules.',raw:true,boss:true,diff:0.8,refBoss:true,stats:null,glove:'titan',moves:['hammerfist','fourpiece','superman'],look:null}];
+/* ---------- DAILY CHALLENGES ---------- */
+const DAILY_POOL=[
+  {id:'wins',text:'Win 3 fights',n:3,coins:150},{id:'kos',text:'Win 2 fights by knockout',n:2,coins:160},{id:'uppers',text:'Land 15 uppercuts',n:15,coins:140},
+  {id:'kicks',text:'Land 12 kicks',n:12,coins:140},{id:'throws',text:'Slam opponents with 3 throws',n:3,coins:180},{id:'fatal',text:'Perform a fatality',n:1,coins:200},
+  {id:'parries',text:'Parry 5 punches',n:5,coins:170},{id:'aerials',text:'Land 5 jumping hits',n:5,coins:160},{id:'sword',text:'Win a fight in Swordsman mode',n:1,coins:220},
+  {id:'twist',text:'Win 2 fights that have a twist',n:2,coins:180},{id:'mode',text:'Win a round of Tournament, Survival or Boss Rush',n:1,coins:250},{id:'momentum',text:'Win a fight in Sumo, Kicks Only or Weapons Arena',n:1,coins:220}];
+const todayKey=()=>new Date().toLocaleDateString('en-CA');
+function ensureDaily(){
+  const k=todayKey();if(save.daily&&save.daily.day===k)return save.daily;
+  let h=0;for(const c of k)h=(h*31+c.charCodeAt(0))>>>0;const R=seeded(h),pool=DAILY_POOL.slice(),tasks=[];
+  while(tasks.length<3){const t=pool.splice(Math.floor(R()*pool.length),1)[0];tasks.push({id:t.id,prog:0,done:false});}
+  save.daily={day:k,tasks};return save.daily;
+}
+/* ---------- CHARACTER SPIN ranks ---------- */
+const CHAR_RANKS=[['common','COMMON','#a8aab5',45,0],['uncommon','UNCOMMON','#5fdc6a',25,10],['rare','RARE','#4aa8ff',15,20],['epic','EPIC','#c46bff',8,35],['legendary','LEGENDARY','#ffc531',4.4,55],
+  ['mythic','MYTHIC','#ff4f6a',1.8,80],['godly','GODLY','#fff6c8',0.6,120],['cosmic','COSMIC','#b45cff',0.15,170],['universal','UNIVERSAL THREAT','#ff3dd6',0.05,250]];
+const rankOf=id=>CHAR_RANKS.find(r=>r[0]===id)||CHAR_RANKS[0];
+const CHAR_SPIN_COST=400,SLOT_COST=[0,0,0,2000,5000];
 function weaponUnlocked(w){if(!w.unlock)return true;const u=w.unlock;return(!u.level||save.level>=u.level)&&(!u.beaten||save.beaten.length>=u.beaten);}
 function unlockText(w){if(!w.unlock)return'';const u=w.unlock,p=[];if(u.level)p.push(`reach level ${u.level}`);if(u.beaten)p.push(`beat ${u.beaten} bot${u.beaten>1?'s':''}`);return'Unlock: '+p.join(' and ');}
 /* ---------- rarities, gloves, skins, crates ---------- */
@@ -776,6 +823,8 @@ function renderFightInfo(){
   const st=chalState();let h='';
   if(G.champ)h+=`<div class="champ"><b>👑 TITLE FIGHT</b> · ${G.champ.name}</div>`;
   if(G.swordMode)h+=`<div class="tw"><b>⚔️ SWORDSMAN</b> · only swords, no kicks</div>`;
+  if(G.rule&&G.rule!=='classic'&&G.rule!=='sword')h+=`<div class="tw"><b>${GAME_MODES[G.rule].icon} ${GAME_MODES[G.rule].name}</b> · ${GAME_MODES[G.rule].desc}</div>`;
+  if(G.run)h+=`<div class="champ"><b>${runLabel()}</b></div>`;
   if(G.mod&&G.mod.name)h+=`<div class="tw"><b>⚡ ${G.mod.name}</b> · ${G.mod.desc}</div>`;
   if(st)h+=`<div class="ch ${st.done?'done':''} ${st.fail?'fail':''}"><b>🎯 ${st.done?'✓ ':''}${G.chal.text}</b> · ${st.prog}</div>`;
   if(el.dataset.v!==h){el.innerHTML=h;el.dataset.v=h;}el.classList.toggle('hidden',!h);
@@ -2261,7 +2310,8 @@ class Fighter{
     }
   }
   startPunch(spec,game){
-    if(G.swordMode&&spec&&(spec.kick||spec.K==null&&spec.keys&&spec.hits&&spec.hits.some&&spec.hits.some(h=>h.kick)))return;   // swordsman: no kicks
+    if(G.swordMode&&isKickSpec(spec))return;   // swordsman: no kicks
+    if(G.kickMode&&spec){if(spec===BASIC.rh||spec===BASIC.lh||spec===BASIC.up)spec=kickSpec(spec===BASIC.rh?'roundhouse':spec===BASIC.lh?'frontkick':'axekick');else if(!isKickSpec(spec))return;}
     let hand=spec.hand!=null?spec.hand:(this.lastHand===0?1:0);
     // a severed arm can't punch: basic punches switch hands, and with no arms left you can only kick
     if(!spec.anim&&this.severed[hand]){if(this.severed[1-hand])return;hand=1-hand;}
@@ -2273,7 +2323,7 @@ class Fighter{
     if(over>1.5&&this===game.player&&!this._tiredShown){this._tiredShown=true;pop('TIRED! SLOW DOWN',this.headWorld(new THREE.Vector3()),'block');setTimeout(()=>this._tiredShown=false,1500);}
     const W=this.weaponW,armed=W.both||hand===0;
     const ab=this.gloveItem.ab;
-    this.punch={...spec,hand,p:0,dur:spec.dur*(weak?1.3:1)/(armed?W.speed:1)*(1+0.08*over)*(ab==='swift'?0.88:1)*(this.slowT>0?1.25:1)/(this.d.punchSpd||1),weak,combo:this.comboIdx||0,spamMul:1/(1+0.22*over)};
+    this.punch={...spec,hand,p:0,dur:spec.dur*(weak?1.3:1)/(armed?W.speed:1)*(1+0.08*over)*(ab==='swift'?0.88:1)*(this.slowT>0?1.25:1)/(this.d.punchSpd||1)/(this===G.player&&!isKickSpec(spec)?(fightStyle().spd||1):1),weak,combo:this.comboIdx||0,spamMul:1/(1+0.22*over)};
     {const foe=this===G.player?G.bot:G.player;let run=0;
       if(foe){const dx=foe.pos.x-this.pos.x,dz=foe.pos.z-this.pos.z,dl=Math.hypot(dx,dz)||1;run=clamp((this.vel.x*dx+this.vel.z*dz)/dl/Math.max(1,this.d.speed),0,1.2);}
       const spin=clamp(((this.yawVel||0)-5)/7,0,1);
@@ -2567,6 +2617,7 @@ G.resolveHit=(a,b,H=null,hitIdx=0)=>{
     *(G.mod&&G.mod.dmg||1)*(G.mod&&G.mod.berserk&&a===G.bot?1+0.9*(1-a.hp/a.d.maxHP):1);
   const gab=a.gloveItem.ab,god=gab==='godhand';
   if(P.aerial){dmg*=1.3;}
+  if(a===G.player){const S=fightStyle();dmg*=(S.all||1)*(P.kick?(S.kick||1):(S.punch||1))*(S.sig&&S.sig.includes(P.name)?1.25:1);}
   // momentum punches: charging in at full speed or whipping round into the shot hits harder
   {const top=hp.clone().add(_d.set(0,0.65,0));
     if(P.momRun&&!hitIdx){dmg*=1+0.45*Math.min(1,P.momRun);pop('MOMENTUM!',top,'crit');b.kb.addScaledVector(_d.set(b.pos.x-a.pos.x,0,b.pos.z-a.pos.z).normalize(),2);}
@@ -2692,10 +2743,11 @@ G.resolveHit=(a,b,H=null,hitIdx=0)=>{
   if((GLOVE_FX[gab]||{}).pierce&&!b.skinItem.noBleed)b.bleedT=Math.max(b.bleedT||0,2.5);
   if(b.hp<=0){b.hp=0;G.knockdown(b,a,dmg,P);return;}
   // big shots knock them flying for a moment
-  const flop=b.flopImmuneT>0?0:b.daze>=100?1:(dmg>=18?0.5:0)+(heavy&&(P.rising||P.kick||counter)?0.3:0)+(heavyW?0.35:0)+(gab==='quake'?0.25:0)+(P.chg||0)*0.6+(a.thunderN%4===0&&(gab==='thunder'||god)?0.3:0);
+  if(G.sumo){b.kb.multiplyScalar(1.7);}
+  const flop=G.sumo&&(heavy||Math.random()<0.25)?1:b.flopImmuneT>0?0:b.daze>=100?1:(dmg>=18?0.5:0)+(heavy&&(P.rising||P.kick||counter)?0.3:0)+(heavyW?0.35:0)+(gab==='quake'?0.25:0)+(P.chg||0)*0.6+(a.thunderN%4===0&&(gab==='thunder'||god)?0.3:0);
   if(Math.random()<flop){
     if(b.daze>=100){b.daze=40;comm(`${b.name()} IS DOWN... AND GETTING UP!`);}
-    b.flop(_d.set(b.pos.x-a.pos.x,0,b.pos.z-a.pos.z).normalize().clone(),2.2+Math.min(2,dmg/10),rand(1.0,1.6));
+    b.flop(_d.set(b.pos.x-a.pos.x,0,b.pos.z-a.pos.z).normalize().clone(),(2.2+Math.min(2,dmg/10))*(G.sumo?1.8:1),rand(1.0,1.6));if(G.sumo&&b.ragdoll)b.ragdoll.ropesOff=true;
     pop('SENT FLYING!',hp.clone().add(_d.set(0,0.6,0)),'crit');
   }else if(!b.rag&&(dmg>=15||(P.chg||0)>0.4||P.aerial)&&Math.random()<0.55){
     b.stumbleT=0.9;b.stumbleDir=_d.set(b.pos.x-a.pos.x,0,b.pos.z-a.pos.z).normalize().clone();
@@ -2724,6 +2776,7 @@ G.injure=(f,what)=>{
 // thrown out of the ring: not a knockdown — they have to get up and climb back in
 function ringOut(f,other){
   if(f.ringedOut)return;f.ringedOut=true;
+  if(G.sumo&&G.mode==='fight'&&!G.training){bigText('RING OUT!','gold');comm(`${f.name()} IS OUT! SUMO VICTORY FOR ${other.name()}!`,true);SFX.cheer(3);burstFlashes(16);G.finish(other,'RING OUT','pushed out of the ring');return;}
   if(G.map&&G.map.lava){f.hp=Math.max(1,f.hp-28*(1-(f.skinItem.armor||0)));f.burnT=Math.max(f.burnT||0,4);setTimeout(()=>comm(`${f.name()} LANDED IN THE LAVA!!`,true),600);}
   bigText('OUT OF THE RING!','red');comm(`${f.name()} IS OUT OF THE RING!!`,true);SFX.ooh(2,true);SFX.cheer(2);addShake(0.4);excite=1;burstFlashes(12);
   f.flopT=Math.max(f.flopT,1.6);
@@ -2791,7 +2844,7 @@ const _lp=new THREE.Vector3(),_land=new THREE.Vector3(),_lp2=new THREE.Vector3()
 function startSmash(side){const L=G.lift,p=G.player;if(!L||L.smash)return;if(p.stam<10){pop('TOO TIRED',p.headWorld(new THREE.Vector3()),'block');return;}
   p.stam-=10;L.smash={t:0,side,hit:false};SFX.swing('hammer',true,0);SFX.grunt(p.voicePitch(),false,0);}
 function hulkImpact(p,b,x,z){
-  const dmg=b===G.ref?0:16*(1-(b.skinItem.armor||0))*(1-(b.d.armor||0));
+  const dmg=b===G.ref?0:16*(1-(b.skinItem.armor||0))*(1-(b.d.armor||0))*(fightStyle().throw||1);
   if(G.mode==='fight'&&dmg){b.hp-=dmg;p.st.dmg+=dmg;p.st.landed++;}
   b.flash=1;crater(x,z,0,0.55);
   const at=new THREE.Vector3(x,0.3,z);spawnBlood(at,22,_v3.set(0,1,0),{speed:4,size:0.05});spawnRing(at,0xffb040,1.1);
@@ -2907,7 +2960,7 @@ function grabAction(){
   if(b.ragdoll&&b.ragdoll.decapped)return isBig(p)?{type:'chunk',label:'RIP UP A CHUNK OF THE RING'}:null;
   const tgt=b.rag?b.ragdoll.p[2]:b.pos,dist=Math.hypot(tgt.x-p.pos.x,tgt.z-p.pos.z);
   if(dist>1.35||b.invulnT>0||p.stunT>0)return isBig(p)&&p.stunT<=0?{type:'chunk',label:'RIP UP A CHUNK OF THE RING'}:null;
-  return vulnerable(b)?{type:'lift',label:'PICK THEM UP'}:{type:'weak',label:'PICK UP (weaken them first!)'};
+  return vulnerable(b)||fightStyle().grabAny?{type:'lift',label:'PICK THEM UP'}:{type:'weak',label:'PICK UP (weaken them first!)'};
 }
 function startLift(){
   const p=G.player,b=G.bot,A=grabAction();if(!A)return;
@@ -3000,7 +3053,7 @@ function updateGrab(dt){
     b.thrown.t+=dt;
     if(b.ragdoll.landed||b.thrown.t>2.5){
       const T=b.thrown;b.thrown=null;if(T.by===G.player&&G.fs)G.fs.throws++;
-      const dmg=(14+26*T.charge)*(1-(b.skinItem.armor||0));
+      const dmg=(14+26*T.charge)*(1-(b.skinItem.armor||0))*(T.by===G.player?(fightStyle().throw||1):1);
       if(G.mode==='fight'){b.hp-=dmg;T.by.st.dmg+=dmg;T.by.st.landed++;}
       b.daze=0;b.flash=1;
       SFX.bodyFall();SFX.punch(true,SFX.pan(b.pos));if(T.charge>0.6)SFX.koDrop();addShake(0.4+0.5*T.charge);impactFrame(0.08+0.08*T.charge);G.hitstop=0.1;
@@ -3290,6 +3343,7 @@ function doFatality(){
   }
 }
 G.finish=(winner,method,detail)=>{
+  if(method!=='DECISION'){REPLAY.koAt=REPLAY.frames.length;REPLAY.after=0;}
   G.mode='ko';G.t=0;G.camOrbit=Math.atan2(camera.position.x-winner.pos.x,camera.position.z-winner.pos.z);
   const loser=winner===G.player?G.bot:G.player;if(method!=='DQ'){loser.down=true;loser.dead=true;}
   G.result={win:winner===G.player,method,detail,round:G.round};
@@ -3310,27 +3364,106 @@ const TRAINING_DUMMY={name:'TRAINING DUMMY',blurb:'',diff:0.3,stats:{height:55,w
 function renderSlotbar(){
   $('slotbar').innerHTML=`<div class="rowtag">ROW ${save.moveRow+1}<small>TAB</small></div>`+save.moves.map((m,i)=>`<div class="${m?'':'empty'}"><b>${keyName(save.moveKeys[i])}</b>${m?m.name:'—'}</div>`).join('');
 }
+/* ---------- WEAPONS ARENA: weapons drop into the ring ---------- */
+const drops=[];
+function clearDrops(){drops.forEach(d=>scene.remove(d.g));drops.length=0;G.dropT=4;}
+function spawnDrop(){
+  const w=pick(WEAPONS.filter(x=>x.id!=='none')),g=new THREE.Group(),col={knuckles:0xffc531,spikes:0xc0c6cf,bat:0x9a6a3a,hammer:0x7b8794,katana:0xe0f0ff}[w.id]||0xffffff;
+  mk(new THREE.MeshBasicMaterial({color:col}),0.22,0.22,0.22,0,0,0,g,false);mk(M(0x111111,0.5),0.3,0.04,0.3,0,-0.16,0,g,false);
+  const ring=new THREE.Mesh(new THREE.RingGeometry(0.28,0.36,24),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.7,side:THREE.DoubleSide}));ring.rotation.x=-Math.PI/2;ring.position.y=-0.28;g.add(ring);
+  g.position.set(rand(-BOUND+0.4,BOUND-0.4),0.35,rand(-BOUND+0.4,BOUND-0.4));scene.add(g);drops.push({g,w,t:0});
+  spawnRing(g.position.clone().setY(0.05),col,1);SFX.reveal(70);comm(`A ${w.name.toUpperCase()} DROPS INTO THE RING!`);
+}
+function updateDrops(dt){
+  if(!G.weaponsArena||G.mode!=='fight')return;
+  G.dropT=(G.dropT||4)-dt;if(G.dropT<=0&&drops.length<2){spawnDrop();G.dropT=rand(9,14);}
+  for(let i=drops.length-1;i>=0;i--){const d=drops[i];d.t+=dt;d.g.rotation.y+=dt*2;d.g.position.y=0.35+Math.sin(d.t*3)*0.06;
+    for(const f of [G.player,G.bot]){if(!f||f.rag||f.down)continue;if(Math.hypot(f.pos.x-d.g.position.x,f.pos.z-d.g.position.z)<0.6){
+      f.setWeapon(d.w.id);f.tempWeaponT=15;pop(d.w.name.toUpperCase()+'!',f.headWorld(new THREE.Vector3()),'counter');SFX.weaponHit(d.w.id,SFX.pan(f.pos));scene.remove(d.g);drops.splice(i,1);break;}}}
+  for(const f of [G.player,G.bot])if(f&&f.tempWeaponT>0){f.tempWeaponT-=dt;if(f.tempWeaponT<=0){f.setWeapon('none');pop('WEAPON GONE',f.headWorld(new THREE.Vector3()),'block');}}
+}
+/* ---------- RUNS: tournament, survival, boss rush ---------- */
+function runLabel(){const R=G.run;if(!R)return'';return R.type==='tour'?['QUARTERFINAL','SEMIFINAL','FINAL'][R.stage]:R.type==='surv'?'SURVIVAL · WAVE '+(R.stage+1):'BOSS RUSH · '+(R.stage+1)+'/4';}
+function runOpponent(R){
+  const cur=Math.min(107,Math.max(0,...save.beaten,0));
+  if(R.type==='tour')return{idx:R.opps[R.stage]};
+  if(R.type==='surv')return{idx:Math.min(107,Math.floor(R.stage*3+cur*0.4))};
+  const B={...RUSH_BOSSES[R.stage]};if(B.refBoss){B.stats={...save.stats};STAT_KEYS.forEach(k=>B.stats[k]=Math.round((B.stats[k]||50)*1.1));B.look={...REF_LOOK,name:'THE REFEREE'};}
+  return{idx:60+R.stage*12,custom:B};
+}
+function startRun(type){
+  const cur=Math.min(107,Math.max(0,...save.beaten,0)),lo=Math.max(0,cur-6),hi=Math.min(107,cur+1),opps=[];
+  while(opps.length<3){const i=lo+Math.floor(Math.random()*(hi-lo+1));if(!opps.includes(i)||hi-lo<3)opps.push(i);}opps.sort((a,b)=>a-b);
+  const R={type,stage:0,opps,hpR:null,heal:type==='surv'?0.3:type==='rush'?0.4:0.25,coins:0};SFX.init();SFX.click();runFight(R);
+}
+function runFight(R){const o=runOpponent(R);startFight(o.idx,{run:R,custom:o.custom});}
+function runResult(R,notes){
+  const run=G.run;G.run=null;const total=run.type==='tour'?3:run.type==='rush'?4:Infinity;
+  if(R.win){run.stage++;run.hpR=G.player.hp/G.player.d.maxHP;bumpDaily('mode',1);
+    if(run.type==='surv'&&run.stage>(save.bestWave||0)){save.bestWave=run.stage;notes.push(`♾️ NEW BEST: WAVE ${run.stage}`);}
+    if(run.stage>=total){
+      if(run.type==='tour'){save.trophies=(save.trophies||0)+1;const c=300+Math.max(0,...save.beaten,0)*8;save.coins+=c;save.rerolls+=2;notes.push(`🏆 TOURNAMENT CHAMPION! +${c} 🪙 +2 REROLLS`);}
+      else{save.rushWins=(save.rushWins||0)+1;save.coins+=1500;save.rerolls+=5;notes.push('💀 BOSS RUSH CLEARED! +1500 🪙 +5 REROLLS');}
+      SFX.cheer(3);flashScreen(0.4);return null;}
+    notes.push(`➡️ NEXT: ${(G.run=run,runLabel())} (your HP refills a little)`);G.run=null;
+    return{label:'NEXT ROUND',go:()=>runFight(run)};
+  }
+  if(run.type==='surv'){const c=run.stage*30;save.coins+=c;notes.push(`♾️ SURVIVED ${run.stage} WAVES · +${c} 🪙`);}
+  else notes.push(run.type==='tour'?'🏆 Knocked out of the tournament.':'💀 The boss rush ends here.');
+  return null;
+}
+/* ---------- KO REPLAY: the last seconds before the knockout, in slow motion ---------- */
+const REPLAY={frames:[],max:260,koAt:null,lock:false,after:0};
+function replayObjs(){const out=[];for(const f of [G.player,G.bot,G.ref]){if(!f)continue;const roots=[f.root,...(f.glove||[])];if(f.rag&&f.ragdoll&&f.ragdoll.meshes)roots.push(...f.ragdoll.meshes);
+  roots.forEach(r=>r.traverse(o=>out.push(o)));}return out;}
+function recordFrame(){
+  if(G.training||!(G.mode==='fight'||G.mode==='knock'||G.mode==='ko')||REPLAY.lock)return;
+  if(REPLAY.koAt!=null&&++REPLAY.after>70){REPLAY.lock=true;return;}
+  const objs=replayObjs(),d=new Float32Array(objs.length*11);
+  objs.forEach((o,i)=>{const k=i*11;d[k]=o.position.x;d[k+1]=o.position.y;d[k+2]=o.position.z;d[k+3]=o.quaternion.x;d[k+4]=o.quaternion.y;d[k+5]=o.quaternion.z;d[k+6]=o.quaternion.w;d[k+7]=o.scale.x;d[k+8]=o.scale.y;d[k+9]=o.scale.z;d[k+10]=o.visible?1:0;});
+  REPLAY.frames.push({objs,d});if(REPLAY.frames.length>REPLAY.max){REPLAY.frames.shift();if(REPLAY.koAt!=null)REPLAY.koAt--;}
+}
+function applyReplay(F){const{objs,d}=F;for(let i=0;i<objs.length;i++){const o=objs[i],k=i*11;o.position.set(d[k],d[k+1],d[k+2]);o.quaternion.set(d[k+3],d[k+4],d[k+5],d[k+6]);o.scale.set(d[k+7],d[k+8],d[k+9]);o.visible=d[k+10]>0;}}
+function afterKO(){
+  if(!G.replayDone&&REPLAY.koAt!=null&&REPLAY.frames.length>40){
+    G.replayDone=true;const snap={objs:replayObjs()};snap.d=new Float32Array(snap.objs.length*11);
+    snap.objs.forEach((o,i)=>{const k=i*11,d=snap.d;d[k]=o.position.x;d[k+1]=o.position.y;d[k+2]=o.position.z;d[k+3]=o.quaternion.x;d[k+4]=o.quaternion.y;d[k+5]=o.quaternion.z;d[k+6]=o.quaternion.w;d[k+7]=o.scale.x;d[k+8]=o.scale.y;d[k+9]=o.scale.z;d[k+10]=o.visible?1:0;});
+    const start=Math.max(0,REPLAY.koAt-110),end=Math.min(REPLAY.frames.length-1,REPLAY.koAt+55);
+    const lo=G.result&&G.result.win?G.bot:G.player,c=lo.rag&&lo.ragdoll?lo.ragdoll.p[2].clone():lo.pos.clone();
+    G.rp={start,end,t:0,snap,center:c.setY(1),ang:Math.random()*6};G.mode='replay';$('replayBar').classList.remove('hidden');SFX.muffle(true);return;
+  }
+  showResult();
+}
+function endReplay(){if(!G.rp)return;applyReplay(G.rp.snap);G.rp=null;$('replayBar').classList.add('hidden');SFX.muffle(false);G.mode='ko';showResult();}
+function updateReplay(rdt){
+  const R=G.rp;if(!R)return;R.t+=rdt*60*0.45;const i=R.start+Math.floor(R.t);
+  if(i>R.end){endReplay();return;}applyReplay(REPLAY.frames[i]);
+}
 function startFight(idx,opts={}){
   G.training=!!opts.training;
-  if(!G.training&&!unlocked(idx))return;
+  if(!G.training&&!opts.custom&&!opts.run&&!unlocked(idx))return;
+  G.run=opts.run||null;
   SFX.init();document.body.classList.add('infight');resetCam();G.wantLock=true;lockMouse();
   closePreview();
-  if(!G.training){G.botIdx=idx;save.selected=idx;saveGame();}
-  const B=G.training?TRAINING_DUMMY:BOTS[idx];
+  if(!G.training){G.botIdx=idx;if(!G.run){save.selected=idx;saveGame();}}
+  const B=G.training?TRAINING_DUMMY:opts.custom||BOTS[idx];
   G.refHits=0;G.refFight=false;G.heals=0;$('healHint').classList.add('hidden');G.refPending=false;G.refRage=0;G.mainResult=null;refProj.forEach(c=>scene.remove(c.m));refProj.length=0;G.shiftLock=save.shiftLock!==false||!!save.fpv;
   crowd.bodies.visible=crowd.heads.visible=!G.training;
   if(G.bot)G.bot.dispose();
-  const boosted={};STAT_KEYS.forEach(k=>boosted[k]=Math.min(100,(B.stats[k]==null?50:B.stats[k])+3));
+  const boosted={};if(B.raw)Object.assign(boosted,B.stats);else STAT_KEYS.forEach(k=>boosted[k]=Math.min(100,(B.stats[k]==null?50:B.stats[k])+3));
   // the twist, bonus challenge and map for this fight
   G.champ=!G.training&&B.champ?B.champ:null;
-  G.mod=!G.training&&!G.champ&&idx>=2&&Math.random()<0.8?pick(TWISTS):{};
+  G.mod=!G.training&&!G.champ&&!B.raw&&idx>=2&&Math.random()<0.8?pick(TWISTS):{};
+  if(G.run&&G.run.type==='surv')G.mod={name:'SUDDEN DEATH',desc:'One knockdown ends it',sudden:true};
   G.chal=!G.training&&idx>=1?pick(CHALLENGES):null;G.fs=freshFS();
   const mapId=G.training||idx<2?'classic':G.champ?pick(['volcano','rooftop','pit']):pick(MAP_IDS.filter(m=>m!==G.mapId));applyMap(mapId);
-  if(!G.training){boosted.height=Math.min(130,Math.max(B.stats.height+30,(save.stats.height||50)+12));boosted.weight=Math.min(100,B.stats.weight+20);boosted.body=Math.min(100,B.stats.body+18);boosted.stamina=Math.min(100,B.stats.stamina+14);boosted.reach=Math.min(100,B.stats.reach+8);
+  if(!G.training&&!B.raw){boosted.height=Math.min(130,Math.max(B.stats.height+30,(save.stats.height||50)+12));boosted.weight=Math.min(100,B.stats.weight+20);boosted.body=Math.min(100,B.stats.body+18);boosted.stamina=Math.min(100,B.stats.stamina+14);boosted.reach=Math.min(100,B.stats.reach+8);
     if(G.mod.giant){boosted.height=230;boosted.weight=100;boosted.body=100;}if(G.mod.prize)STAT_KEYS.forEach(k=>boosted[k]=Math.min(100,boosted[k]+10));}
   G.bot=new Fighter(boosted,{name:B.name,...B.look});G.brain=new Brain(G.bot,G.training?B.diff:Math.min(1,B.diff+0.25));
   G.brain.moveSpecs=(B.moves||[]).filter(id=>TEMPLATES[id]).map(id=>customSpec(buildShopMove(id)));
-  G.bot.setWeapon(!G.training&&save.gameMode==='sword'?'katana':B.weapon||'none');G.bot.setGear(B.glove||'basic',B.skinType||'normal');G.bot.setPower(G.training?'none':B.power||'none');
+  if(B.refBoss)G.brain.refBoss={whistle:3,yellow:2,red:6,tele:null,rage:0};
+  G.bot.setWeapon(!G.training&&save.gameMode==='sword'?'katana':B.weapon||'none');G.bot.setGear(B.glove||'basic',B.skinType||'normal');G.bot.setPower(G.training?'none':B.powers||B.power||'none');
+  G.rule=G.training?'classic':save.gameMode||'classic';G.kickMode=G.rule==='kicks';G.sumo=G.rule==='sumo';G.weaponsArena=G.rule==='weapons';clearDrops();
   G.player=player;player.setStats(save.stats);player.setLook(save.look);
   G.swordMode=!G.training&&save.gameMode==='sword';
   player.setWeapon(G.swordMode?'katana':weaponUnlocked(weaponById(save.weapon))?save.weapon||'none':'none');player.setGear(save.glove,save.skinType);player.setPower(save.powers);
@@ -3340,12 +3473,14 @@ function startFight(idx,opts={}){
   clearDecals();G.decapped=false;resetArena();
   if(G.ref)G.ref.dispose();
   if(!G.training){G.ref=new Fighter({height:50,weight:35,reach:40,body:35,stamina:50},REF_LOOK);G.ref.relaxed=true;G.ref.pos.set(2.2,0,0);}else G.ref=null;
-  player.hpMul=1+((player.accBonus||{}).hp||0);G.bot.hpMul=1;{const ax=player.accBonus||{};player.d.power*=1+(ax.dmg||0);player.d.speed*=1+(ax.speed||0);}if(!G.training){G.bot.hpMul=G.mod.giant?1.35:1.12;G.bot.d.power*=1.1;if(G.mod.setup)G.mod.setup(player,G.bot);}
+  player.hpMul=1+((player.accBonus||{}).hp||0);G.bot.hpMul=1;{const ax=player.accBonus||{};player.d.power*=1+(ax.dmg||0);player.d.speed*=1+(ax.speed||0);}if(!G.training){G.bot.hpMul=B.raw?1:G.mod.giant?1.35:1.12;G.bot.d.power*=1.1;if(G.mod.setup)G.mod.setup(player,G.bot);}
+  if(fightStyle().hp)player.hpMul*=fightStyle().hp;if(fightStyle().speed)player.d.speed*=fightStyle().speed;if(fightStyle().stam)player.d.stamRegen*=fightStyle().stam;
   addBelt(G.bot,G.champ?G.champ.col:null);const myBelt=bestBelt();addBelt(player,myBelt?myBelt[2]:null);
-  G.fatal=null;$('fatalHint').classList.add('hidden');
+  G.fatal=null;$('fatalHint').classList.add('hidden');REPLAY.frames.length=0;REPLAY.koAt=null;REPLAY.lock=false;G.replayDone=false;
+  if(G.sumo)setTimeout(()=>['x+','x-','z+','z-'].forEach(sd=>snapRopes(sd,0)),900);
   G.round=1;
   player.resetCombat();G.bot.resetCombat();
-  $('pName').innerHTML=(save.look.name||'YOU').toUpperCase()+titleHTML(save,save.powers.length>0);$('eName').innerHTML=B.name.toUpperCase()+(G.training?'':botTitle(B,idx));G.titleBefore=titleOf(save).n;
+  $('pName').innerHTML=(save.look.name||'YOU').toUpperCase()+titleHTML(save,save.powers.length>0);$('eName').innerHTML=B.name.toUpperCase()+(G.training?'':botTitle(B,idx))+(G.run?`<span class="ttl" style="--tc:#4aa8ff">${runLabel()}</span>`:'');G.titleBefore=titleOf(save).n;
   $('menu').classList.add('hidden');$('hud').classList.remove('hidden');$('result').classList.add('hidden');
   renderSlotbar();
   camera.position.set(0,4.5,8);
@@ -3356,6 +3491,7 @@ function startRound(){
   resetForRound(p);resetForRound(b);
   p.pos.set(0,0,-1.7);b.pos.set(0,0,1.7);p.yaw=0;b.yaw=Math.PI;
   G.time=ROUND_TIME;G.mode='intro';G.t=0;G.knock=null;
+  if(G.round===1&&G.run&&G.run.hpR!=null)p.hp=Math.round(p.d.maxHP*Math.min(1,G.run.hpR+G.run.heal));
   if(G.lift){G.player.lifting=false;G.lift=null;aimMarker.visible=false;aimDot.visible=false;}
   if(G.ref){G.ref.pos.set(2.2,0,0);G.ref.punch=null;}
   $('round').textContent=G.training?'TRAINING ROOM · ∞ HP':G.refFight?'REF FIGHT · ONE KNOCKDOWN WINS':`${G.champ?'TITLE FIGHT · ':''}ROUND ${G.round} · FIRST TO ${G.mod&&G.mod.sudden?1:WIN_KDS}`+(G.refPending?' · THE REF IS WAITING':'');
@@ -3380,11 +3516,11 @@ function decision(){
   G.finish(win?p:b,'DECISION',`${b.downs} – ${p.downs} in knockdowns`);
 }
 function showResult(){
-  const R=G.mainResult||G.result,RR=G.mainResult?G.result:null,p=G.player;G.mainResult=null;
+  const R=G.mainResult||G.result,RR=G.mainResult?G.result:null,p=G.player;G.mainResult=null;G.wasRun=!!G.run;
   if(RR&&RR.win)save.refWins=(save.refWins||0)+1;
   G.mode='result';document.body.classList.remove('infight');$('fightInfo').classList.add('hidden');$('fatalHint').classList.add('hidden');$('healHint').classList.add('hidden');G.wantLock=false;unlockMouse();
   let firstBeat=false;
-  if(R.win){save.record.w++;if(R.method!=='DECISION')save.record.ko++;if(!save.beaten.includes(G.botIdx)){save.beaten.push(G.botIdx);firstBeat=true;}SFX.win();}
+  if(R.win){save.record.w++;if(R.method!=='DECISION')save.record.ko++;if(!G.run&&!(G.botIdx>=0&&BOTS[G.botIdx]&&G.lastCustom)&&!save.beaten.includes(G.botIdx)){save.beaten.push(G.botIdx);firstBeat=true;}SFX.win();}
   else{save.record.l++;SFX.lose();}
   // XP -> levels -> rerolls
   const gain=Math.round((R.win?100+(R.method!=='DECISION'?40:0)+G.botIdx*8:35)+p.st.landed*2+(RR&&RR.win?200:0));
@@ -3406,6 +3542,12 @@ function showResult(){
   save.coins+=bonusC;save.rerolls+=bonusR;
   $('resXp').innerHTML=`+${gain} XP · <span class="lu">+${coins} 🪙</span>`+(ups?` · <span class="lu">LEVEL ${save.level}!</span>`:'')+(earned?` · <span class="lu">+${earned} REROLL${earned>1?'S':''}</span>`:'');
   {const nt=titleOf(save);if(G.titleBefore&&nt.n!==G.titleBefore){notes.unshift(`<b style="color:${nt.c}">🏅 NEW TITLE: ${nt.n}!</b>`);setTimeout(()=>{SFX.reveal(100);flashScreen(0.3);},900);}}
+  // daily challenges
+  {const fs2=G.fs||{},win=R.win?1:0;bumpDaily('wins',win);bumpDaily('kos',win&&R.method!=='DECISION'?1:0);bumpDaily('uppers',fs2.uppers||0);bumpDaily('kicks',fs2.kicks||0);bumpDaily('throws',fs2.throws||0);
+    bumpDaily('parries',fs2.parries||0);bumpDaily('aerials',fs2.aerials||0);bumpDaily('fatal',G.fatal&&G.fatal.done?1:0);bumpDaily('sword',win&&G.swordMode?1:0);bumpDaily('twist',win&&G.mod&&G.mod.name?1:0);
+    bumpDaily('momentum',win&&(G.sumo||G.kickMode||G.weaponsArena)?1:0);}
+  const runNext=G.run?runResult(R,notes):null;
+  (G.dailyNotes||[]).forEach(n=>notes.push(n));G.dailyNotes=[];
   if(notes.length)$('resXp').innerHTML+=`<div style="margin-top:6px;font-size:12px;line-height:1.6">${notes.join('<br>')}</div>`;
   if(ups)setTimeout(()=>{SFX.reveal(96);flashScreen(0.3);},600);
   saveGame();
@@ -3418,11 +3560,14 @@ function showResult(){
   $('resNext').onclick=()=>{SFX.click();startFight(nextIdx);};
   $('resRematch').style.display=R.win?'':'none';
   $('resRematch').onclick=()=>{SFX.click();startFight(G.botIdx);};
+  if(G._runMode!==undefined){}
+  if(runNext){$('resNext').textContent=runNext.label;$('resNext').onclick=()=>{SFX.click();runNext.go();};$('resRematch').style.display='none';}
+  else if(G.wasRun){$('resNext').textContent='GAME MODES';$('resNext').onclick=()=>{SFX.click();toMenu();tab='modes';renderMenu();};$('resRematch').style.display='none';}
   $('result').classList.remove('hidden');
-  if(R.win&&G.botIdx<BOTS.length-1)save.selected=G.botIdx+1;saveGame();
+  if(R.win&&G.botIdx<BOTS.length-1&&!G.wasRun)save.selected=G.botIdx+1;saveGame();
 }
 function toMenu(){
-  G.mode='menu';document.body.classList.remove('infight');crowd.bodies.visible=crowd.heads.visible=true;G.training=false;$('grabHint').classList.add('hidden');$('healHint').classList.add('hidden');$('fightInfo').classList.add('hidden');$('fatalHint').classList.add('hidden');G.mod={};G.chal=null;G.champ=null;G.fatal=null;applyMap('classic');addBelt(player,null);G.wantLock=false;unlockMouse();
+  G.mode='menu';document.body.classList.remove('infight');crowd.bodies.visible=crowd.heads.visible=true;G.training=false;$('grabHint').classList.add('hidden');$('healHint').classList.add('hidden');$('fightInfo').classList.add('hidden');$('fatalHint').classList.add('hidden');$('replayBar').classList.add('hidden');clearDrops();G.run=null;G.rp=null;G.mod={};G.chal=null;G.champ=null;G.fatal=null;applyMap('classic');addBelt(player,null);G.wantLock=false;unlockMouse();
   $('result').classList.add('hidden');$('pause').classList.add('hidden');$('hud').classList.add('hidden');$('menu').classList.remove('hidden');
   $('mash').classList.add('hidden');$('count').textContent='';$('big').className='';
   if(G.bot){G.bot.dispose();G.bot=null;}
@@ -3573,6 +3718,7 @@ addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
 addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('mousedown',e=>{
   SFX.init();
+  if(G.mode==='replay'){endReplay();return;}
   if(G.paused)return;
   if(FIGHT_MODES.includes(G.mode)&&G.wantLock&&!locked())lockMouse();
   if(save.fpv&&FIGHT_MODES.includes(G.mode)&&(e.button===0||e.button===2)&&(e.buttons&3)===3){   // both buttons: grab / throw
@@ -3646,7 +3792,7 @@ function updateFight(dt){
     if(won){const pi=playerInput(dt);pi.punch=null;p.update(dt,b,pi,G);}else p.update(dt,b,idle,G);
     b.update(dt,p,idle,G);
     if(G.fatal&&!G.fatal.done&&G.t>4.2)$('fatalHint').classList.add('hidden');
-    if(G.t>(won&&G.lift?9:G.fatal&&G.fatal.done?(G.fatal.kind==='slam'?8.5:G.fatal.kind==='launch'?8:7):4.6)&&G.mode==='ko'){if(G.refPending&&!G.refFight){G.mainResult=G.result;startRefFight();}else showResult();}
+    if(G.t>(won&&G.lift?9:G.fatal&&G.fatal.done?(G.fatal.kind==='slam'?8.5:G.fatal.kind==='launch'?8:7):4.6)&&G.mode==='ko'){if(G.refPending&&!G.refFight){G.mainResult=G.result;startRefFight();}else afterKO();}
   }else if(G.mode==='result'){
     p.update(dt,b,idle,G);b.update(dt,p,idle,G);
   }
@@ -3679,14 +3825,20 @@ let menuSpin=0,dragging=false,dragX=0,spinVel=0.4;
    The camera's ROTATION is set exactly from yaw/pitch every frame (no lag, no swinging), and only the PIVOT
    (a point at your boxer's head) is smoothed, so hits, bobbing and knockback don't jerk the view.
    Shift lock: yaw comes from the mouse. Otherwise it follows the fight, or stays where you dragged it (right mouse). */
+// first person hides your head, chest and back pieces so nothing blocks the view (your arms and gloves stay)
+function fpBody(p,hide){
+  if(!p||!p.head||!!p._fpHidden===hide)return;p._fpHidden=hide;p.head.visible=!hide;
+  if(hide){p._fpList=p.torso.children.filter(c=>c.isMesh&&c.visible);(p.accMeshes||[]).forEach(g=>g.parent===p.torso&&p._fpList.push(g));p._fpList.forEach(c=>c.visible=false);}
+  else{(p._fpList||[]).forEach(c=>c.visible=true);p._fpList=null;}
+}
 function rigCamera(rdt,p,b){
   const hs=p.d.hScale;
   if(save.fpv){ // first person: the camera is your eyes; your own head is hidden so it doesn't block the view
-    const yaw=G.slYaw||0,pt=clamp((G.camPitch||0)*1.1,-1.0,1.0);p.head.visible=false;
+    const yaw=G.slYaw||0,pt=clamp((G.camPitch||0)*1.1,-1.0,1.0);fpBody(p,true);
     const eye=p.rag&&p.ragdoll?p.ragdoll.p[0].clone():p.head.getWorldPosition(new THREE.Vector3()).add(_v3.set(Math.sin(p.yaw)*0.12*hs,0.17*hs,Math.cos(p.yaw)*0.12*hs));
     camera.position.copy(eye);camera.rotation.order='YXZ';camera.rotation.set(-pt,yaw+Math.PI,0);G.camAz=yaw;return;
   }
-  if(p.head&&!p.head.visible)p.head.visible=true;
+  fpBody(p,false);
   let yaw;
   if(G.shiftLock)yaw=G.slYaw||0;
   else{
@@ -3712,9 +3864,11 @@ function rigCamera(rdt,p,b){
   camera.rotation.order='YXZ';camera.rotation.set(-pitch*0.85,yaw+Math.PI,0);
 }
 function updateCamera(dt,rdt){
+  if(G.mode==='replay'&&G.rp){const R=G.rp;R.ang+=rdt*0.35;const c=R.center,r=3.4;
+    camera.position.set(c.x+Math.sin(R.ang)*r,1.9,c.z+Math.cos(R.ang)*r);camera.lookAt(c.x,0.9,c.z);fpBody(G.player,false);return;}
   const p=G.player;let rig=false;
   // you're in control in these moments -> the player camera; otherwise (you got knocked down / lost) a cinematic one
-  if(!save.fpv&&p&&p.head&&!p.head.visible)p.head.visible=true;
+  if((!save.fpv||G.mode==='replay')&&p)fpBody(p,false);
   const playerCam=G.bot&&(G.mode==='fight'||G.mode==='intro'||G.mode==='roundEnd'||(G.mode==='knock'&&G.knock&&G.knock.other===p)||(G.mode==='ko'&&G.result&&G.result.win));
   if(G.mode==='menu'){
     const opp=!!preview;
@@ -3784,6 +3938,7 @@ function swatches(key,cols){const v=save.look[key];return `<div class="sw">${col
 function tabLook(){
   const L=save.look;
   return `<h2>CUSTOMIZE</h2><p class="sub">Make your boxer yours.</p>
+  <p class="sub" style="margin:4px 0"><b>FIGHTING STYLE</b></p>${Object.entries(STYLES).map(([id,st])=>`<div class="mcard" style="--rc:${fightStyle()===st?'#ffc531':'#555'}"><div class="minfo"><b>${st.icon} ${st.name}</b><span>${st.desc}${st.sig?' Signature: '+st.sig.join(', ')+' (+25%).':''}</span></div>${fightStyle()===st?'<span class="badge">YOUR STYLE</span>':`<button class="chip on" data-style="${id}">PICK</button>`}</div>`).join('')}
   <div class="crow"><b>NAME</b><input class="txt" id="nameIn" maxlength="14" value="${(L.name||'').replace(/"/g,'')}"></div>
   <div class="crow"><b>SKIN</b>${swatches('skin',SKIN_TONES)}</div>
   <div class="crow"><b>HAIR STYLE</b><div class="sw">${HAIR_STYLES.map(h=>`<button class="chip ${L.hairStyle===h?'on':''}" data-hair="${h}">${h.toUpperCase()}</button>`).join('')}</div></div>
@@ -3805,6 +3960,63 @@ function tabOpps(){
     const sk=skinById(b.skinType),gl=gloveById(b.glove);
     const gear=[b.weapon&&b.weapon!=='none'?`<span style="color:#ff6a5a">ARMED: ${weaponById(b.weapon).name}</span>`:'',sk.id!=='normal'?`<span style="color:${RARITY[sk.r].c}">${sk.name} skin</span>`:'',gl.id!=='basic'?`<span style="color:${RARITY[gl.r].c}">${gl.name}</span>`:'',b.power?`<span style="color:${RARITY[powerById(b.power).r].c}">${powerById(b.power).icon} ${powerById(b.power).name}</span>`:''].filter(Boolean).join(' · ');
   return `<div class="opp ${u?'':'lock'} ${save.selected===i?'sel':''} ${b.boss?'boss':''}" data-opp="${i}"><div class="num">${b.champ?'👑':i+1}</div><div class="info"><b>${u?b.name:'???'}${u?botTitle(b,i):''}</b><small>${u?b.blurb:'Beat the previous level to unlock'}</small><div class="stars">${stars} · OVR ${overall(b.stats)}${u&&gear?' · '+gear:''}</div></div>${beat?`<span class="badge">${b.champ?'BELT WON':'BEATEN'}</span>`:''}</div>`}).join('')}`;
+}
+function bumpDaily(id,n){
+  if(!n)return;const D=ensureDaily(),t=D.tasks.find(x=>x.id===id);if(!t||t.done)return;const d=DAILY_POOL.find(x=>x.id===id);
+  t.prog+=n;if(t.prog>=d.n){t.done=true;save.coins+=d.coins;save.rerolls+=1;(G.dailyNotes=G.dailyNotes||[]).push(`📅 DAILY DONE: ${d.text} · +${d.coins} 🪙 +1 REROLL`);}
+}
+function dailyHTML(){
+  const D=ensureDaily();
+  return `<div class="tipbox" style="margin:0 0 12px"><b>📅 DAILY CHALLENGES</b> <small style="opacity:.7">(new ones every day)</small>${D.tasks.map(t=>{const d=DAILY_POOL.find(x=>x.id===t.id);return `<div class="kv"><span>${t.done?'✅':'⬜'} ${d.text} <small>(${Math.min(t.prog,d.n)}/${d.n})</small></span><b>🪙 ${d.coins} +1 🎲</b></div>`;}).join('')}</div>`;
+}
+function tabModes(){
+  const gm=save.gameMode||'classic';
+  return `<h2>GAME MODES</h2>${dailyHTML()}
+  <p class="sub" style="margin-bottom:6px"><b>RULES</b> — used for every fight (campaign and the modes below)</p>
+  ${Object.entries(GAME_MODES).map(([id,m])=>`<div class="mcard" style="--rc:${gm===id?'#ffc531':'#555'}"><div class="minfo"><b>${m.icon} ${m.name}</b><span>${m.desc}</span></div>${gm===id?'<span class="badge">ON</span>':`<button class="chip on" data-gmode="${id}">PICK</button>`}</div>`).join('')}
+  <p class="sub" style="margin:14px 0 6px"><b>RUNS</b> — fight several opponents in a row; your HP only partly refills between fights</p>
+  <div class="mcard" style="--rc:#4aa8ff"><div class="minfo"><b>🏆 TOURNAMENT</b><span>8-fighter bracket: quarterfinal, semifinal, final. Win all three for a trophy, 2 rerolls and big coins. Trophies: ${save.trophies||0}</span></div><button class="chip on" data-run="tour">ENTER</button></div>
+  <div class="mcard" style="--rc:#5fdc6a"><div class="minfo"><b>♾️ SURVIVAL</b><span>Endless waves, one knockdown each, every wave tougher. Best: wave ${save.bestWave||0}</span></div><button class="chip on" data-run="surv">START</button></div>
+  <div class="mcard" style="--rc:#ff4f6a"><div class="minfo"><b>💀 BOSS RUSH</b><span>The Giant, the Mutant, the Ninja, then the Referee himself. Beat all four for 1500 coins and 5 rerolls. Cleared: ${save.rushWins||0}</span></div><button class="chip on" data-run="rush">FIGHT</button></div>`;
+}
+function charCard(c,i){
+  const R=rankOf(c.rank),act=i===save.charIdx,st=c.stats||{};
+  return `<div class="mcard" style="--rc:${R[2]}"><div class="minfo"><b>${(c.look&&c.look.name||'FIGHTER').toUpperCase()} <span class="ttl" style="--tc:${R[2]}">${R[1]}</span></b>
+    <small>OVR ${overall(st)} · ${derive(st).heightCm} cm · ${derive(st).punchKg} kg punch</small></div>
+    ${act?'<span class="badge">PLAYING</span>':`<button class="chip on" data-char="${i}">PLAY</button>`}</div>`;
+}
+let charSpin=null;
+function tabChars(){
+  const n=save.chars.length,slots=save.charSlots;
+  let h=`<h2>CHARACTERS</h2><p class="sub">Up to 5 fighters, each with their own stats and look (coins, items and moves are shared). Spin for a new one — the rank decides how strong they start, from COMMON all the way to <b style="color:#ff3dd6">UNIVERSAL THREAT</b>.</p>`;
+  h+=save.chars.map(charCard).join('');
+  for(let i=n;i<5;i++)h+=i<slots?`<div class="mcard" style="--rc:#555"><div class="minfo"><b>EMPTY SLOT</b><small>Spin to fill it</small></div><button class="chip on" data-cspin="new" ${save.coins<CHAR_SPIN_COST||charSpin?'disabled':''}>🎰 SPIN · 🪙 ${CHAR_SPIN_COST}</button></div>`
+    :`<div class="mcard" style="--rc:#333"><div class="minfo"><b>🔒 LOCKED SLOT</b><small>Buy it to hold another fighter</small></div><button class="chip" data-cslot="${i}" ${i===slots&&save.coins>=SLOT_COST[i]?'':'disabled'}>🪙 ${SLOT_COST[i]}</button></div>`;
+  h+=`<div id="cspinBox" class="crate" style="--cc:#ff3dd6;justify-content:center;font:900 22px Bungee,Impact,sans-serif;min-height:64px">${charSpin?charSpin.label:'🎰'}</div>
+  <div class="sw" style="margin-top:6px"><button class="chip" data-cspin="replace" ${save.coins<CHAR_SPIN_COST||charSpin?'disabled':''}>RE-SPIN THIS CHARACTER · 🪙 ${CHAR_SPIN_COST}</button></div>
+  <div class="tipbox">ODDS: ${CHAR_RANKS.map(r=>`<span style="color:${r[2]}">${r[1]} ${r[3]}% (+${r[4]})</span>`).join(' · ')}<br>The bonus is added to every stat your new fighter rolls.</div>`;
+  return h;
+}
+function switchChar(i){
+  if(i===save.charIdx||!save.chars[i])return;saveGame();save.charIdx=i;const c=save.chars[i];
+  save.stats=c.stats;save.look={...DEFAULT_LOOK,...c.look};save.locks=c.locks||{};
+  player.setStats(save.stats);player.setLook(save.look);saveGame();SFX.reveal(80);renderMenu();
+}
+function rollRank(){const tot=CHAR_RANKS.reduce((a,r)=>a+r[3],0);let x=Math.random()*tot;for(const r of CHAR_RANKS){if(x<r[3])return r;x-=r[3];}return CHAR_RANKS[0];}
+function spinCharacter(mode){
+  if(charSpin||save.coins<CHAR_SPIN_COST)return;if(mode==='new'&&save.chars.length>=save.charSlots)return;
+  save.coins-=CHAR_SPIN_COST;saveGame();SFX.init();
+  const R=rollRank(),stats={};STAT_KEYS.forEach(k=>stats[k]=Math.min(STAT_MAX,rollStat()+R[4]));
+  const look={...DEFAULT_LOOK,name:(pick(NAME_A)+' '+pick(NAME_B)).slice(0,14),skin:pick(SKIN_TONES_BOT),hair:pick(['#111','#2b1b0e','#5a2d0c','#d8a020','#e8e0c8','#d42a2a','#20c5c5']),
+    hairStyle:pick(['bald','buzz','flattop','mohawk','afro','long']),shorts:pick(KIT),gloves:pick(KIT),shoes:pick(['#111','#f4f4f4',pick(KIT)]),shirt:'none',band:Math.random()<0.4};
+  let n=0;charSpin={label:'...'};renderMenu();
+  const tick=setInterval(()=>{n++;const r=CHAR_RANKS[Math.floor(Math.random()*CHAR_RANKS.length)];charSpin.label=`<span style="color:${r[2]}">${r[1]}</span>`;const el=$('cspinBox');if(el)el.innerHTML=charSpin.label;SFX.tick();
+    if(n>=26){clearInterval(tick);charSpin=null;
+      const c={stats,look,locks:{},rank:R[0]};
+      if(mode==='new'){save.chars.push(c);save.charIdx=save.chars.length-1;}else save.chars[save.charIdx]=c;
+      save.stats=stats;save.look=look;save.locks={};player.setStats(stats);player.setLook(look);saveGame();
+      const big=CHAR_RANKS.indexOf(R)>=4;SFX.reveal(big?100:70);if(big){flashScreen(0.35);SFX.cheer(1.5);}
+      renderMenu();const el=$('cspinBox');if(el)el.innerHTML=`<span style="color:${R[2]}">${R[1]}!</span>`;}},70+0*n);
 }
 function tabControls(){
   const k=(a,b)=>`<div class="key"><kbd>${a}</kbd>${b}</div>`;
@@ -4295,13 +4507,13 @@ function editorPointerMove(e){
 function editorPointerUp(){if(MT.drag){MT.drag=null;canvas.style.cursor='';saveGame();renderTimeline();}}
 canvas.addEventListener('wheel',e=>{if(G.mode==='menu'&&tab==='moves'){MT.zoom=clamp(MT.zoom+e.deltaY*0.002,1.4,5);e.preventDefault();}},{passive:false});
 
-const TABS={roll:tabRoll,stats:tabStats,look:tabLook,moves:tabMoves,crates:tabCrates,inventory:tabInventory,opps:tabOpps,controls:tabControls,settings:tabSettings};
+const TABS={modes:tabModes,chars:tabChars,roll:tabRoll,stats:tabStats,look:tabLook,moves:tabMoves,crates:tabCrates,inventory:tabInventory,opps:tabOpps,controls:tabControls,settings:tabSettings};
 function renderMenu(){
   document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   $('tabPanel').innerHTML=TABS[tab]();
   const sel=BOTS[save.selected]&&unlocked(save.selected)?save.selected:0;save.selected=sel;
   $('vsLine').innerHTML=`vs <b>${BOTS[sel].name}</b>`;
-  $('lvBox').innerHTML=`<div style="margin-bottom:6px">${titleHTML(save,save.powers.length>0)}</div><div class="coinline">🪙 <b>${save.coins}</b> coins</div><div class="lvtop">LEVEL ${save.level}<span>${save.rerolls} REROLLS</span></div><div class="xpbar"><i style="width:${save.xp/xpNeed(save.level)*100}%"></i></div><small>${save.xp} / ${xpNeed(save.level)} XP to next level</small>`;
+  $('lvBox').innerHTML=`<div style="margin-bottom:6px"><span class="ttl" style="--tc:${rankOf(save.chars[save.charIdx].rank)[2]}">${rankOf(save.chars[save.charIdx].rank)[1]}</span>${titleHTML(save,save.powers.length>0)}</div><div class="sub" style="margin:0 0 4px;font-size:11px">${fightStyle().icon} ${fightStyle().name} · 📅 ${ensureDaily().tasks.filter(t=>t.done).length}/3 daily</div><div class="coinline">🪙 <b>${save.coins}</b> coins</div><div class="lvtop">LEVEL ${save.level}<span>${save.rerolls} REROLLS</span></div><div class="xpbar"><i style="width:${save.xp/xpNeed(save.level)*100}%"></i></div><small>${save.xp} / ${xpNeed(save.level)} XP to next level</small>`;
   const r=save.record;$('recLine').innerHTML=`<b>${r.w}</b>W · <b>${r.l}</b>L · <b>${r.ko}</b> KO`;
   if(tab==='opps'){openPreview(sel);const el=document.querySelector('.opp.sel');if(el)el.scrollIntoView({block:'center'});}else closePreview();
   if(tab!=='moves'){mtStop();MT.binding=-1;}
@@ -4327,6 +4539,11 @@ $('tabPanel').addEventListener('click',e=>{
   if(t.dataset.crate){openCrate(t.dataset.crate);return;}
   if(t.id==='jumpCur'){let i=0;while(i<BOTS.length-1&&save.beaten.includes(i))i++;save.selected=i;saveGame();SFX.click();renderMenu();return;}
   if(t.dataset.fpv!=null){save.fpv=t.dataset.fpv==='1';saveGame();SFX.click();renderMenu();return;}
+  if(t.dataset.run){startRun(t.dataset.run);return;}
+  if(t.dataset.char){switchChar(+t.dataset.char);return;}
+  if(t.dataset.cspin){spinCharacter(t.dataset.cspin);return;}
+  if(t.dataset.cslot){const i=+t.dataset.cslot;if(i!==save.charSlots||save.coins<SLOT_COST[i])return;save.coins-=SLOT_COST[i];save.charSlots++;saveGame();SFX.reveal(90);renderMenu();return;}
+  if(t.dataset.style){save.style=t.dataset.style;saveGame();SFX.click();renderMenu();return;}
   if(t.dataset.gmode){save.gameMode=t.dataset.gmode;saveGame();SFX.click();renderMenu();return;}
   if(t.dataset.inv){invTab=t.dataset.inv;invSel=null;SFX.click();renderMenu();return;}
   if(t.dataset.acc){const a=accById(t.dataset.acc);if(!a||!save.inv.acc[a.id])return;save.acc[a.slot]=a.id;attachAccessories(player,save.acc);saveGame();SFX.reveal(75);renderMenu();return;}
@@ -4483,10 +4700,13 @@ function frame(now,manual){
     if(preview){preview.pos.set(0.75,0,0);preview.yaw=-0.25+Math.sin(clock*0.5+1)*0.3;preview.animate(rdt);}
     excite=damp(excite,0.12,1,rdt);
   }else{
+    if(G.mode==='replay')updateReplay(rdt);
+    else{
     updateFight(dt);
-    updateGrab(dt);updateArena(dt);updateCharge(rdt);
+    updateGrab(dt);updateArena(dt);updateCharge(rdt);updateDrops(dt);
     G.player.animate(dt);if(G.bot)G.bot.animate(dt);
-    updateRef(dt);
+    updateRef(dt);recordFrame();
+    }
     const push=[G.player.pos,G.bot?G.bot.pos:G.player.pos];
     [G.player,G.bot].forEach(f=>{if(f&&f.rag)push.push(...f.ragdoll.p);});
     updateRopes(dt,push);

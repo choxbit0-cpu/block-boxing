@@ -938,7 +938,7 @@
   "Digit3",
   "Digit4"
  ],
- "savedAt": 1794724897287,
+ "savedAt": 1794725480422,
  "shiftLock": true,
  "moveRows": [
   [
@@ -4129,5 +4129,60 @@
  ],
  "acc": {},
  "fpv": false,
- "gameMode": "classic"
+ "gameMode": "classic",
+ "chars": [
+  {
+   "stats": {
+    "height": 264,
+    "weight": 314,
+    "reach": 252,
+    "body": 294,
+    "stamina": 281,
+    "speed": 75,
+    "durability": 90
+   },
+   "look": {
+    "name": "YOU",
+    "skin": "#7fd16b",
+    "hair": "#2b1b0e",
+    "hairStyle": "bald",
+    "shorts": "#111111",
+    "gloves": "#111111",
+    "shoes": "#111111",
+    "shirt": "none",
+    "shirtColor": "#f4f4f4",
+    "band": true
+   },
+   "locks": {
+    "reach": true,
+    "weight": true,
+    "height": true,
+    "body": true,
+    "stamina": true
+   },
+   "rank": "common"
+  }
+ ],
+ "charIdx": 0,
+ "charSlots": 3,
+ "daily": {
+  "day": "2026-11-15",
+  "tasks": [
+   {
+    "id": "kicks",
+    "prog": 0,
+    "done": false
+   },
+   {
+    "id": "uppers",
+    "prog": 0,
+    "done": false
+   },
+   {
+    "id": "twist",
+    "prog": 0,
+    "done": false
+   }
+  ]
+ }
 }
