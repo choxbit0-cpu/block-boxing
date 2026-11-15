@@ -3753,7 +3753,7 @@ addEventListener('keydown',e=>{
   }
   if(e.code==='Space'){e.preventDefault();if((G.mode==='fight'||G.mode==='intro')&&!e.repeat)pending.jump=0.15;}
   if(e.code==='KeyV'&&(G.mode==='fight'||G.mode==='intro')&&!e.repeat)pending.parry=0.12;
-  if(e.code==='KeyC'&&FIGHT_MODES.includes(G.mode)){if(!e.repeat&&G.mode==='fight'&&!G.paused&&headReach())startHeadGrab(true);else resetCam();}
+  if(e.code==='KeyC'&&FIGHT_MODES.includes(G.mode)){if(!e.repeat&&G.mode==='fight'&&!G.paused&&headReach())startHeadGrab(true);}   // C only grabs heads now (it used to also snap the camera round)
   if(e.code==='Tab'&&FIGHT_MODES.includes(G.mode)){e.preventDefault();if(!e.repeat&&!G.paused){setMoveRow(save.moveRow+1);renderSlotbar();SFX.tick();
     const el=$('slotbar');el.classList.remove('flip');void el.offsetWidth;el.classList.add('flip');pop('MOVE ROW '+(save.moveRow+1),G.player.headWorld(new THREE.Vector3()),'block');}}
   if((e.code==='ShiftLeft'||e.code==='ShiftRight')&&!e.repeat&&FIGHT_MODES.includes(G.mode)&&!G.paused&&!save.fpv){
@@ -3768,7 +3768,7 @@ addEventListener('keydown',e=>{
   }
 });
 addEventListener('keyup',e=>{keys[e.code]=false;if(e.code==='KeyG')grabKeyUp();if(e.code==='KeyR')releaseCharge('up');});
-/* ---------- fight camera: mouse-look (pointer lock), wheel zoom, arrow keys, C to reset ---------- */
+/* ---------- fight camera: mouse-look (pointer lock), wheel zoom, arrow keys ---------- */
 const FIGHT_MODES=['fight','intro','knock','roundEnd','ko'];
 const locked=()=>document.pointerLockElement===canvas;
 function lockMouse(){
@@ -4187,7 +4187,7 @@ function tabControls(){
   return `<h2>CONTROLS</h2><p class="sub">You always face your opponent.</p>
   ${k('W A S D','Move / circle around')}${k('Q / E','Weave left / right — dodges hooks')}${k('F (hold)','Block — drains the block bar')}
   ${k('LEFT CLICK','Right hook')}${k('RIGHT CLICK','Left hook (tap — holding and dragging moves the camera)')}${k('R','Uppercut — beats weaves, wrecks blocks')}
-  ${k(save.moveKeys.map(keyName).join(' '),'Your moves (buy them in the Move Shop, rebind there)')}${k('TAB','Switch to your next row of 4 moves')}${k('SPACE','Jump — punches in the air hit 30% harder')}${k('V','Parry — tap right before a punch lands to stop it and leave them wide open')}${k('G','Lift a weakened opponent over your head (stunned, dazed, guard broken, low HP, frozen or down). Hold G to charge, release to throw them where your camera is looking')}${k('C','Grab them by the head when you are close and facing them. Throw with G, click to smash them down. (When nobody is close, C resets the camera.)')}${k('T','Taunt — refills stamina, but leaves you open')}${k('MOUSE','Shift lock (default): the mouse turns the camera and your boxer faces where you look — punches only land on what you face')}${k('SHIFT','Toggle shift lock. With it off: hold right mouse + drag to spin the camera 360°')}${k('WHEEL','Zoom camera in / out')}${k('ARROWS','Spin / tilt the camera with the keyboard')}${k('C','Snap camera back behind you')}${k('ESC','Pause (frees the mouse)')}
+  ${k(save.moveKeys.map(keyName).join(' '),'Your moves (buy them in the Move Shop, rebind there)')}${k('TAB','Switch to your next row of 4 moves')}${k('SPACE','Jump — punches in the air hit 30% harder')}${k('V','Parry — tap right before a punch lands to stop it and leave them wide open')}${k('G','Lift a weakened opponent over your head (stunned, dazed, guard broken, low HP, frozen or down). Hold G to charge, release to throw them where your camera is looking')}${k('C','Grab them by the head when you are close and facing them. Throw with G, click to smash them down.')}${k('T','Taunt — refills stamina, but leaves you open')}${k('MOUSE','Shift lock (default): the mouse turns the camera and your boxer faces where you look — punches only land on what you face')}${k('SHIFT','Toggle shift lock. With it off: hold right mouse + drag to spin the camera 360°')}${k('WHEEL','Zoom camera in / out')}${k('ARROWS','Spin / tilt the camera with the keyboard')}${k('C','Snap camera back behind you')}${k('ESC','Pause (frees the mouse)')}
   <div class="tipbox"><b>Rules:</b> every knockdown ends the round — <b>first to 3 knockdowns wins</b>. You win a round only by emptying their <b>HP to 0</b>. Big shots send fighters flying for a moment, a dazed fighter (stars) goes sprawling, and heavy hits can break bones or take limbs off.
   <br><b>Tips:</b> Slip a hook with Q/E or <b>parry with V</b>, then punch right away for a +50% COUNTER. Spamming punches tires you out and missing leaves you off balance. Holding block too long breaks your guard. Punching with no stamina is slow and weak.</div>`;
 }
