@@ -196,6 +196,8 @@ input[type=range]{width:100%}
 .inj span.cut{background:#5a0000;border:1px solid #ff3030}
 #lockHint{position:absolute;left:50%;top:44%;transform:translateX(-50%);font:800 13px Rubik,sans-serif;color:#fff;background:rgba(0,0,0,.6);padding:8px 16px;border-radius:20px;border:1px solid var(--gold);pointer-events:none}
 #replayBar{position:fixed;inset:0;pointer-events:none;z-index:7}#replayBar .rbt,#replayBar .rbb{position:absolute;left:0;right:0;height:11%;background:#000}#replayBar .rbt{top:0}#replayBar .rbb{bottom:0;display:flex;align-items:center;justify-content:space-between;padding:0 28px;font:900 22px Bungee,Impact,sans-serif;color:#ff4a3a}#replayBar small{font:600 12px Rubik,sans-serif;color:#aaa}
+#fistAim{position:fixed;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;border:3px solid rgba(255,255,255,.75);pointer-events:none;z-index:6;display:flex;align-items:center;justify-content:center;font:800 9px Rubik,sans-serif;letter-spacing:.5px;color:#fff;text-shadow:0 1px 2px #000;transition:border-color .08s}
+#fistAim.head{border-color:#ff3a3a;background:rgba(255,40,40,.18)}#fistAim.body{border-color:#ffc531;background:rgba(255,197,49,.15)}#fistAim.miss{border-style:dashed}
 #tutBox{position:absolute;left:max(16px,env(safe-area-inset-left,0px));top:120px;width:330px;max-width:calc(100vw - 32px);background:rgba(10,12,20,.92);border:2px solid var(--gold);border-radius:14px;padding:14px 16px;font:400 13px/1.5 Rubik,sans-serif;color:var(--txt);z-index:6;box-shadow:0 8px 30px rgba(0,0,0,.5)}
 #tutBox .tstep{font:800 10px Rubik,sans-serif;letter-spacing:1px;color:var(--dim)}#tutBox h3{margin:2px 0 6px;font:400 19px Bungee,Impact,sans-serif;color:var(--gold)}
 #tutBox kbd{display:inline-block;min-width:20px;padding:1px 6px;border-radius:5px;background:#fff;color:#111;font:800 11px Rubik,sans-serif;text-align:center;box-shadow:0 2px 0 #888;margin:0 1px}
@@ -347,6 +349,7 @@ body.infight .overlay,body.infight .overlay *{cursor:default}
   <div id="healHint" class="hidden"></div>
   <div id="fightInfo" class="hidden"></div>
   <div id="tutBox" class="hidden"></div>
+  <div id="fistAim" class="hidden"></div>
   <div id="replayBar" class="hidden"><div class="rbt"></div><div class="rbb"><span>▶ KO REPLAY</span><small>click to skip</small></div></div>
   <div id="fatalHint" class="hidden"><b>X</b> FATALITY</div>
   <div id="lockHint" class="hidden">CLICK TO CONTROL THE CAMERA</div>
@@ -2382,6 +2385,7 @@ class Fighter{
       if(foe){const dx=foe.pos.x-this.pos.x,dz=foe.pos.z-this.pos.z,dl=Math.hypot(dx,dz)||1;run=clamp((this.vel.x*dx+this.vel.z*dz)/dl/Math.max(1,this.d.speed),0,1.2);}
       const spin=clamp(((this.yawVel||0)-5)/7,0,1);
       this.punch.momRun=run>0.55?run:0;this.punch.momSpin=spin;}
+    if(this===G.player&&G.nextAim){if(performance.now()-G.nextAim.t<600)this.punch.aim=G.nextAim;G.nextAim=null;}
     this.lastHand=hand;this.st.thrown++;if(this.jumpY>0.15)this.punch.aerial=true;
     const pan=SFX.pan(this.pos);
     SFX.swing(armed?W.id:'none',spec.rising,pan);
@@ -2635,6 +2639,8 @@ G.resolveHit=(a,b,H=null,hitIdx=0)=>{
   if(b.invulnT>0){if(!b._ifShown){b._ifShown=true;pop('GETTING UP',b.headWorld(new THREE.Vector3()),'block');setTimeout(()=>b._ifShown=false,600);}return;}
   const range=a.d.range*P.rangeMul+(armed?W.range:0);
   const dist=distXZ(a.pos,b.pos);
+  if(P.aim&&P.aim.zone==='miss'&&!hitIdx&&dist<=range+0.05){   // you aimed at empty air
+    a.stunT=Math.max(a.stunT,0.18);a.comboQueue=null;pop('MISS',a.headWorld(new THREE.Vector3()),'block');return;}
   if(dist>range+0.05){
     // whiffed: swinging at air leaves you off balance for a moment
     a.stunT=Math.max(a.stunT,(P.rising||P.kick)?0.32:0.16);a.comboQueue=null;
@@ -2671,6 +2677,9 @@ G.resolveHit=(a,b,H=null,hitIdx=0)=>{
     *(G.mod&&G.mod.dmg||1)*(G.mod&&G.mod.berserk&&a===G.bot?1+0.9*(1-a.hp/a.d.maxHP):1);
   const gab=a.gloveItem.ab,god=gab==='godhand';
   if(P.aerial){dmg*=1.3;}
+  if(P.aim&&!hitIdx){const top=b.headWorld(new THREE.Vector3()).add(_d.set(0,0.35,0));
+    if(P.aim.zone==='head'){dmg*=1.3;b.daze=Math.min(100,(b.daze||0)+16);pop('HEADSHOT!',top,'crit');}
+    else if(P.aim.zone==='body'){dmg*=0.95;b.stam=Math.max(0,b.stam-14);b.block=Math.max(0,(b.block||0)-6);pop('BODY SHOT',top,'counter');}}
   if(a===G.player){const S=fightStyle();dmg*=(S.all||1)*(P.kick?(S.kick||1):(S.punch||1))*(S.sig&&S.sig.includes(P.name)?1.25:1);}
   // momentum punches: charging in at full speed or whipping round into the shot hits harder
   {const top=hp.clone().add(_d.set(0,0.65,0));
@@ -3793,8 +3802,8 @@ addEventListener('mousemove',e=>{
   if(locked()){mx=e.movementX;my=e.movementY;lastMX=null;}
   else{if(lastMX==null){lastMX=e.clientX;lastMY=e.clientY;return;}mx=e.clientX-lastMX;my=e.clientY-lastMY;lastMX=e.clientX;lastMY=e.clientY;}
   mx=clamp(mx,-70,70);my=clamp(my,-70,70);   // browsers sometimes send huge jumps
+  if(save.fpv&&G.fp&&!G.fp.grab){fpAim(mx,my);return;}
   G.slYaw=(G.slYaw||0)-mx*0.0034*camSens();
-  if(save.fpv&&G.fp)fpSwing(mx,my);
   G.camPitch=clamp((G.camPitch||0)+my*0.0028*camSens(),-0.45,0.95);
 });
 addEventListener('mousemove',e=>{
@@ -3809,11 +3818,51 @@ addEventListener('mousemove',e=>{
 });
 addEventListener('mouseup',e=>{
   if(save.fpv&&FIGHT_MODES.includes(G.mode)){const S=G.fp;
-    if(S&&S.btn===e.button){if(!S.fired&&!S.grab&&performance.now()-S.t0<350&&(G.mode==='fight'||G.mode==='intro')&&!G.lift&&!G.chunk){pending.punch=e.button===2?'lh':'rh';pending.t=0.25;pending.chg=0;}G.fp=null;}
+    if(S&&S.btn===e.button){if(!S.fired&&!S.grab)fireFist(e.button===2?'lh':'rh',clamp((performance.now()-S.t0-250)/1100,0,1));G.fp=null;}   // let go = aimed punch (held longer = charged)
     G.chg=null;return;}
   if(e.button===2&&rmb.down){rmb.down=false;if(rmb.moved>=6&&!G.shiftLock){G.chg=null;return;}}
   if(e.button===0)releaseCharge('rh');if(e.button===2)releaseCharge('lh');
 });
+// ---- first person: FIST CONTROL ----
+// Hold LMB (right fist) or RMB (left fist) and move the mouse: your fist follows it on screen.
+// Flick the mouse to throw a punch where the fist is; or line it up and let go for an aimed punch.
+// Where the fist is pointing decides the hit: head (HEADSHOT), body (BODY SHOT, drains stamina) or empty air (MISS).
+const fistRay=new THREE.Raycaster(),_fn=new THREE.Vector2(),_fh=new THREE.Vector3();
+const FIST_NDC=0.6;   // how far across the screen the fist can travel
+function fistZone(S){
+  const b=G.bot;if(!b||b.rag||b.down)return'miss';
+  _fn.set(clamp(S.x,-1,1)*FIST_NDC,clamp(S.y,-1,1)*FIST_NDC);fistRay.setFromCamera(_fn,camera);const hs=b.d.hScale;
+  if(fistRay.ray.distanceToPoint(b.headWorld(_fh).add(_v3.set(0,-0.08*hs,0)))<0.27*hs)return'head';
+  const ty=b.root.position.y;
+  for(const y of [1.32,1.12,0.95])if(fistRay.ray.distanceToPoint(_fh.set(b.pos.x,ty+y*hs,b.pos.z))<0.3*hs*b.d.bodyW)return'body';
+  return'miss';
+}
+function fireFist(type,chg){
+  const S=G.fp;if(!S||!(G.mode==='fight'||G.mode==='intro')||G.lift||G.chunk)return;
+  G.nextAim={zone:fistZone(S),t:performance.now()};
+  pending.punch=type;pending.t=0.25;pending.chg=chg;SFX.swing(chg>0.5?'bat':'none',chg>0.6,0);
+}
+function fpAim(mx,my){
+  const S=G.fp,now=performance.now(),k=0.0055*camSens();
+  // move the fist; pushing past the edge of its range turns the camera so you can still track them
+  let nx=S.x+mx*k,ny=S.y-my*k;
+  if(Math.abs(nx)>1){G.slYaw=(G.slYaw||0)-(nx-Math.sign(nx))*0.6;nx=Math.sign(nx);}
+  if(Math.abs(ny)>1){G.camPitch=clamp((G.camPitch||0)-(ny-Math.sign(ny))*0.5,-0.45,0.95);ny=Math.sign(ny);}
+  S.x=nx;S.y=ny;
+  // a fast flick throws the punch
+  S.ax=S.ax*0.8+mx;S.ay=S.ay*0.8+my;
+  if(now<S.next)return;const sp=Math.hypot(S.ax,S.ay);if(sp<58)return;
+  const up=S.ay<-40&&Math.abs(S.ay)>Math.abs(S.ax)*1.1;
+  fireFist(up?'up':S.btn===2?'lh':'rh',clamp((sp-55)/120,0,1)*0.85);
+  S.fired=true;S.next=now+330;S.ax=0;S.ay=0;
+}
+function updateFistAim(){
+  const el=$('fistAim'),S=G.fp;
+  if(!save.fpv||!S||S.grab||!FIGHT_MODES.includes(G.mode)||G.paused){if(!el.classList.contains('hidden'))el.classList.add('hidden');return;}
+  const z=fistZone(S);el.classList.remove('hidden');
+  el.style.left=((S.x*FIST_NDC+1)/2*100)+'%';el.style.top=((1-(S.y*FIST_NDC+1)/2)*100)+'%';
+  el.className=z;el.textContent=z==='head'?'HEAD':z==='body'?'BODY':'';
+}
 // ---- first person: swing the mouse while holding a button to punch ----
 G.fp=null;
 function fpSwing(mx,my){
@@ -3875,7 +3924,7 @@ addEventListener('mousedown',e=>{
     if(headAim())startHeadGrab();else startLift();return;}
   if(G.chunk&&FIGHT_MODES.includes(G.mode)){if(e.button===0||e.button===2){G.chunk.charge=Math.max(G.chunk.charge,0.45);throwChunk();}return;}
   if(G.lift&&FIGHT_MODES.includes(G.mode)){if(e.button===0||e.button===2)startSmash(e.button===0?-1:1);return;}   // HULK SMASH
-  if(save.fpv&&(G.mode==='fight'||G.mode==='intro')&&(e.button===0||e.button===2)){G.fp={btn:e.button,ax:0,ay:0,fired:false,next:0,t0:performance.now()};return;}
+  if(save.fpv&&(G.mode==='fight'||G.mode==='intro')&&(e.button===0||e.button===2)){G.fp={btn:e.button,ax:0,ay:0,x:e.button===2?-0.12:0.12,y:-0.05,fired:false,next:0,t0:performance.now()};return;}
   if((G.mode==='fight'||G.mode==='intro')&&(e.button===0||e.button===2))startCharge(e.button===0?'rh':'lh');
   if(e.button===2&&FIGHT_MODES.includes(G.mode)&&!G.shiftLock){rmb.down=true;rmb.t=performance.now();rmb.moved=0;rmb.lx=e.clientX;rmb.ly=e.clientY;}
 });
@@ -3990,7 +4039,8 @@ function fpArms(p){
     if(R){ // gripping: your gloves go to where you're holding them
       const t=R[Math.min(i,R.length-1)].target;_fpw.copy(t);if(R.length===1)_fpw.x+=(i?1:-1)*0.12*Math.cos(p.yaw),_fpw.z+=(i?-1:1)*0.12*Math.sin(p.yaw);
       g.position.copy(p.torso.worldToLocal(_fpw));g.scale.setScalar(0.8);
-    }else{g.position.x+=sg*0.15;g.position.y-=0.12;g.position.z+=0.1;g.scale.setScalar(0.72);}
+    }else if(G.fp&&!G.fp.grab&&!p.punch&&(G.fp.btn===2?1:0)===i){const S=G.fp;g.position.set(-S.x*0.34,0.5+S.y*0.3,0.46);g.scale.setScalar(0.72);}   // your fist, steered by the mouse
+    else{g.position.x+=sg*0.15;g.position.y-=0.12;g.position.z+=0.1;g.scale.setScalar(0.72);}
   }
 }
 function rigCamera(rdt,p,b){
@@ -4289,7 +4339,7 @@ function tabSettings(){
   <div class="crow"><b>MUSIC</b><input type="range" id="musVol" min="0" max="1" step="0.05" value="${save.music==null?0.5:save.music}"></div>
   <div class="crow"><b>CROWD</b><input type="range" id="crowdVol" min="0" max="1" step="0.05" value="${save.crowd==null?0.35:save.crowd}"></div>
   <div class="crow"><b>FIRST PERSON</b><div class="sw"><button class="chip ${save.fpv?'':'on'}" data-fpv="0">OFF</button><button class="chip ${save.fpv?'on':''}" data-fpv="1">ON</button></div></div>
-  <div class="sub" style="margin:-4px 0 10px;font-size:11px">First person: hold a mouse button and swing the mouse to punch (LMB right hand, RMB left hand, swing up for an uppercut — faster swings hit harder). Hold both buttons to grab. Everything else stays the same.</div>
+  <div class="sub" style="margin:-4px 0 10px;font-size:11px">First person: hold a mouse button and your fist follows the mouse (LMB right fist, RMB left fist). Flick the mouse to punch where the fist is, or line it up and let go for an aimed punch — the ring shows HEAD (headshot, +30%, dazes) or BODY (drains stamina); aim at nothing and you miss. Flick upward for an uppercut. Hold both buttons to grab.</div>
   <div class="crow"><b>CAMERA SENSITIVITY</b><input type="range" id="camSens" min="0.2" max="2.5" step="0.05" value="${save.camSens==null?1:save.camSens}"></div>
   <div class="crow"><b>BLOOD & GORE</b><div class="sw"><button class="chip ${goreOn()?'':'on'}" data-gore="0">OFF</button><button class="chip ${goreOn()&&!superGore()?'on':''}" data-gore="1">ON</button><button class="chip ${superGore()?'on':''}" data-gore="2" style="${superGore()?'background:#8a0000;border-color:#ff3a3a':''}">💀 SUPER GORE</button></div></div>
   <button class="danger" id="resetSave">RESET ALL PROGRESS</button>`;
@@ -4891,7 +4941,7 @@ function frame(now,manual){
   updateFlashes(rdt,G.mode!=='menu');
   updateCrowd(clock);
   updateVFX(dt);
-  updatePunchFX(rdt);updateGibs(dt);updateRefProj(dt);updateWeather(rdt,performance.now()/1000);updateOrgans(dt);updateChunks(dt);renderFightInfo();
+  updatePunchFX(rdt);updateGibs(dt);updateRefProj(dt);updateWeather(rdt,performance.now()/1000);updateOrgans(dt);updateChunks(dt);renderFightInfo();updateFistAim();
   // only offer "click to lock" where locking actually works; no message at all where it can't
   const needLock=FIGHT_MODES.includes(G.mode)&&!G.paused&&!locked()&&!G.lockBlocked;
   $('lockHint').classList.toggle('hidden',!needLock);
