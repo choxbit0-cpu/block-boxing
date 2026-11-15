@@ -2886,8 +2886,10 @@ function smashScenery(x,z,dir){
 G.chunk=null;const flying=[];
 const chunkTop=M(0xcfd3dd,0.85),chunkSide=M(0x1d2b5a,0.7),chunkWood=M(0x6b4a2a,0.9);
 function ripChunk(){
-  const p=G.player;if(!isBig(p)||G.chunk||G.lift||p.stam<12)return;
-  p.stam-=12;const fx=Math.sin(p.yaw),fz=Math.cos(p.yaw),x=clamp(p.pos.x+fx*0.9,-RING+0.4,RING-0.4),z=clamp(p.pos.z+fz*0.9,-RING+0.4,RING-0.4);
+  const p=G.player;if(!isBig(p)||G.chunk||G.lift)return;
+  const wait=chunkWait();if(wait>0){pop('WAIT '+Math.ceil(wait)+'s',p.headWorld(new THREE.Vector3()),'block');SFX.lose();return;}
+  if(p.stam<25){pop('TOO TIRED',p.headWorld(new THREE.Vector3()),'block');return;}
+  p.stam-=25;G.chunkN=(G.chunkN||0)+1;const fx=Math.sin(p.yaw),fz=Math.cos(p.yaw),x=clamp(p.pos.x+fx*0.9,-RING+0.4,RING-0.4),z=clamp(p.pos.z+fz*0.9,-RING+0.4,RING-0.4);
   const g=new THREE.Group(),w=rand(0.7,1.1),d=rand(0.5,0.8);
   mk(chunkTop,w,0.06,d,0,0.06,0,g);mk(chunkWood,w*0.96,0.16,d*0.96,0,-0.05,0,g);mk(chunkSide,w*0.3,0.1,d*0.4,w*0.3,-0.1,0,g);
   g.position.set(x,0,z);scene.add(g);
@@ -2896,8 +2898,10 @@ function ripChunk(){
   G.chunk={g,charge:0,charging:false,t:0,size:w*d};p.lifting=true;p.punch=null;p.blocking=false;
   pop('RIPPED UP THE RING!',p.headWorld(new THREE.Vector3()).add(_d.set(0,0.4,0)),'counter');comm(`${p.name()} IS TEARING THE RING APART!!`,true);SFX.ooh(1.4,true);
 }
+// ripping up the ring is tiring: a cooldown after every throw that grows each time you do it in the same fight
+const chunkWait=()=>Math.max(0,((G.chunkReadyT||0)-performance.now())/1000);
 function throwChunk(){
-  const C=G.chunk,p=G.player;if(!C)return;G.chunk=null;p.lifting=false;
+  const C=G.chunk,p=G.player;if(!C)return;G.chunk=null;p.lifting=false;G.chunkReadyT=performance.now()+1000*Math.min(20,8+3*((G.chunkN||1)-1));
   camera.getWorldDirection(_camF);const sp=9+9*C.charge,from=C.g.position;
   // aim assist: if they are roughly where you are looking, the chunk is lobbed right at them
   const b=G.bot;let v;
@@ -2957,13 +2961,14 @@ function grabAction(){
   if(headAim())return{type:'head',key:'HOLD LMB',label:'GRAB THEIR HEAD'};
   const r=G.ref;if(r&&!G.refFight&&r.invulnT<=0&&!r.climb){const rp=r.rag?r.ragdoll.p[2]:r.pos,rd=Math.hypot(rp.x-p.pos.x,rp.z-p.pos.z),bp=b.rag?b.ragdoll.p[2]:b.pos;
     if(rd<1.2&&rd<Math.hypot(bp.x-p.pos.x,bp.z-p.pos.z)&&p.stunT<=0)return{type:'ref',label:'PICK UP THE REF (throw him into them!)'};}
-  if(b.ragdoll&&b.ragdoll.decapped)return isBig(p)?{type:'chunk',label:'RIP UP A CHUNK OF THE RING'}:null;
+  if(b.ragdoll&&b.ragdoll.decapped)return isBig(p)?(chunkWait()>0?{type:'weak',label:'RIP UP A CHUNK (ready in '+Math.ceil(chunkWait())+'s)'}:{type:'chunk',label:'RIP UP A CHUNK OF THE RING'}):null;
   const tgt=b.rag?b.ragdoll.p[2]:b.pos,dist=Math.hypot(tgt.x-p.pos.x,tgt.z-p.pos.z);
-  if(dist>1.35||b.invulnT>0||p.stunT>0)return isBig(p)&&p.stunT<=0?{type:'chunk',label:'RIP UP A CHUNK OF THE RING'}:null;
+  if(dist>1.35||b.invulnT>0||p.stunT>0)return isBig(p)&&p.stunT<=0?(chunkWait()>0?{type:'weak',label:'RIP UP A CHUNK (ready in '+Math.ceil(chunkWait())+'s)'}:{type:'chunk',label:'RIP UP A CHUNK OF THE RING'}):null;
   return vulnerable(b)||fightStyle().grabAny?{type:'lift',label:'PICK THEM UP'}:{type:'weak',label:'PICK UP (weaken them first!)'};
 }
 function startLift(){
   const p=G.player,b=G.bot,A=grabAction();if(!A)return;
+  if(A.type==='weak'&&A.label.startsWith('RIP')){pop('WAIT '+Math.ceil(chunkWait())+'s',p.headWorld(new THREE.Vector3()),'block');SFX.lose();return;}
   if(A.type==='weak'){p.stunT=Math.max(p.stunT,0.35);SFX.whoosh();pop('TOO STRONG — WEAKEN THEM FIRST',p.headWorld(new THREE.Vector3()),'block');return;}
   if(A.type==='chunk'){ripChunk();return;}
   if(A.type==='ref'){const r=G.ref;if(!r.rag)r.startRagdoll(_d.set(0,0,0),0);r.flopT=99;r.punch=null;
@@ -3476,7 +3481,7 @@ function startFight(idx,opts={}){
   player.hpMul=1+((player.accBonus||{}).hp||0);G.bot.hpMul=1;{const ax=player.accBonus||{};player.d.power*=1+(ax.dmg||0);player.d.speed*=1+(ax.speed||0);}if(!G.training){G.bot.hpMul=B.raw?1:G.mod.giant?1.35:1.12;G.bot.d.power*=1.1;if(G.mod.setup)G.mod.setup(player,G.bot);}
   if(fightStyle().hp)player.hpMul*=fightStyle().hp;if(fightStyle().speed)player.d.speed*=fightStyle().speed;if(fightStyle().stam)player.d.stamRegen*=fightStyle().stam;
   addBelt(G.bot,G.champ?G.champ.col:null);const myBelt=bestBelt();addBelt(player,myBelt?myBelt[2]:null);
-  G.fatal=null;$('fatalHint').classList.add('hidden');REPLAY.frames.length=0;REPLAY.koAt=null;REPLAY.lock=false;G.replayDone=false;
+  G.chunkN=0;G.chunkReadyT=0;G.fatal=null;$('fatalHint').classList.add('hidden');REPLAY.frames.length=0;REPLAY.koAt=null;REPLAY.lock=false;G.replayDone=false;
   if(G.sumo)setTimeout(()=>['x+','x-','z+','z-'].forEach(sd=>snapRopes(sd,0)),900);
   G.round=1;
   player.resetCombat();G.bot.resetCombat();
