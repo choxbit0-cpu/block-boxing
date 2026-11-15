@@ -3848,10 +3848,13 @@ let menuSpin=0,dragging=false,dragX=0,spinVel=0.4;
 function fpBody(p,hide){
   if(!p||!p.head||!!p._fpHidden===hide)return;p._fpHidden=hide;p.head.visible=!hide;
   if(hide){p._fpList=p.torso.children.filter(c=>c.isMesh&&c.visible);(p.accMeshes||[]).forEach(g=>g.parent===p.torso&&p._fpList.push(g));p._fpList.forEach(c=>c.visible=false);}
-  else{(p._fpList||[]).forEach(c=>c.visible=true);p._fpList=null;for(let i=0;i<2;i++){p.upper[i].visible=true;p.glove[i].scale.setScalar(1);}}
+  else{(p._fpList||[]).forEach(c=>c.visible=true);p._fpList=null;for(let i=0;i<2;i++){p.upper[i].visible=true;p.glove[i].scale.setScalar(1);}
+    (p.weaponMeshes||[]).forEach(m=>{const b=m.userData.fpb;if(b){m.scale.copy(b.s);m.position.copy(b.p);}});}
 }
 const _fpw=new THREE.Vector3();
 function fpArms(p){
+  // weapons shrink in first person so a katana or bat doesn't fill the screen
+  (p.weaponMeshes||[]).forEach(m=>{const b=m.userData.fpb||(m.userData.fpb={s:m.scale.clone(),p:m.position.clone()});m.scale.copy(b.s).multiplyScalar(0.42);m.position.copy(b.p).multiplyScalar(0.42);});
   const L=G.lift,R=L&&L.b&&L.b.ragdoll&&L.b.ragdoll.pins;
   for(let i=0;i<2;i++){
     p.upper[i].visible=false;p.fore[i].visible=false;const g=p.glove[i],sg=Math.sign(p.shoulder[i].x)||1;
@@ -3899,7 +3902,7 @@ function updateCamera(dt,rdt){
     camera.position.set(c.x+Math.sin(R.ang)*r,1.9,c.z+Math.cos(R.ang)*r);camera.lookAt(c.x,0.9,c.z);fpBody(G.player,false);return;}
   const p=G.player;let rig=false;
   // you're in control in these moments -> the player camera; otherwise (you got knocked down / lost) a cinematic one
-  if((!save.fpv||G.mode==='replay')&&p)fpBody(p,false);
+  if(p)fpBody(p,false);   // your body is always shown, except in the first-person camera below (which hides it again for this frame)
   const playerCam=G.bot&&(G.mode==='fight'||G.mode==='intro'||G.mode==='roundEnd'||(G.mode==='knock'&&G.knock&&G.knock.other===p)||(G.mode==='ko'&&G.result&&G.result.win));
   if(G.mode==='menu'){
     const opp=!!preview;
