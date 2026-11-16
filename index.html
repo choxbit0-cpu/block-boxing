@@ -3613,6 +3613,7 @@ const REPLAY={frames:[],max:260,koAt:null,lock:false,after:0};
 function replayObjs(){const out=[];for(const f of [G.player,G.bot,G.ref]){if(!f)continue;const roots=[f.root,...(f.glove||[])];if(f.rag&&f.ragdoll&&f.ragdoll.meshes)roots.push(...f.ragdoll.meshes);
   roots.forEach(r=>r.traverse(o=>out.push(o)));}return out;}
 function recordFrame(){
+  if(G.player&&G.player._fpHidden)fpBody(G.player,false);   // first person hides your body only for the camera, not for the replay
   if(G.training||!(G.mode==='fight'||G.mode==='knock'||G.mode==='ko')||REPLAY.lock)return;
   if(REPLAY.koAt!=null&&++REPLAY.after>70){REPLAY.lock=true;return;}
   const objs=replayObjs(),d=new Float32Array(objs.length*11);
@@ -4161,9 +4162,6 @@ addEventListener('mousemove',e=>{
   G.camPitch=clamp((G.camPitch||0)+dy*0.003*camSens(),-0.38,0.95);
 });
 addEventListener('mouseup',e=>{
-  if(save.fpv&&FIGHT_MODES.includes(G.mode)){const S=G.fp;
-    if(S&&S.btn===e.button){if(!S.fired&&!S.grab)fireFist(e.button===2?'lh':'rh',clamp((performance.now()-S.t0-250)/1100,0,1));G.fp=null;}   // let go = aimed punch (held longer = charged)
-    G.chg=null;return;}
   if(e.button===2&&rmb.down){rmb.down=false;if(rmb.moved>=6&&!G.shiftLock){G.chg=null;return;}}
   if(e.button===0)releaseCharge('rh');if(e.button===2)releaseCharge('lh');
 });
@@ -4262,13 +4260,12 @@ addEventListener('mousedown',e=>{
   if(G.paused)return;
   if(FIGHT_MODES.includes(G.mode)&&G.wantLock&&!locked())lockMouse();
   if(save.fpv&&FIGHT_MODES.includes(G.mode)&&(e.button===0||e.button===2)&&(e.buttons&3)===3){   // both buttons: grab / throw
-    if(G.fp)G.fp.grab=true;
+    if(G.fp)G.fp.grab=true;G.chg=null;   // the first button started a punch charge: cancel it
     if(G.chunk){G.chunk.charge=Math.max(G.chunk.charge,0.6);throwChunk();return;}
     if(G.lift){G.lift.charge=Math.max(G.lift.charge,0.6);releaseLift();return;}
     if(headAim())startHeadGrab();else startLift();return;}
   if(G.chunk&&FIGHT_MODES.includes(G.mode)){if(e.button===0||e.button===2){G.chunk.charge=Math.max(G.chunk.charge,0.45);throwChunk();}return;}
   if(G.lift&&FIGHT_MODES.includes(G.mode)){if(e.button===0||e.button===2)startSmash(e.button===0?-1:1);return;}   // HULK SMASH
-  if(save.fpv&&(G.mode==='fight'||G.mode==='intro')&&(e.button===0||e.button===2)){G.fp={btn:e.button,ax:0,ay:0,x:e.button===2?-0.12:0.12,y:-0.05,fired:false,next:0,t0:performance.now()};return;}
   if((G.mode==='fight'||G.mode==='intro')&&(e.button===0||e.button===2))startCharge(e.button===0?'rh':'lh');
   if(e.button===2&&FIGHT_MODES.includes(G.mode)&&!G.shiftLock){rmb.down=true;rmb.t=performance.now();rmb.moved=0;rmb.lx=e.clientX;rmb.ly=e.clientY;}
 });
@@ -4696,7 +4693,7 @@ function tabSettings(){
   <div class="crow"><b>MUSIC</b><input type="range" id="musVol" min="0" max="1" step="0.05" value="${save.music==null?0.5:save.music}"></div>
   <div class="crow"><b>CROWD</b><input type="range" id="crowdVol" min="0" max="1" step="0.05" value="${save.crowd==null?0.35:save.crowd}"></div>
   <div class="crow"><b>FIRST PERSON</b><div class="sw"><button class="chip ${save.fpv?'':'on'}" data-fpv="0">OFF</button><button class="chip ${save.fpv?'on':''}" data-fpv="1">ON</button></div></div>
-  <div class="sub" style="margin:-4px 0 10px;font-size:11px">First person: hold a mouse button and your fist follows the mouse (LMB right fist, RMB left fist). Flick the mouse to punch where the fist is, or line it up and let go for an aimed punch — the ring shows HEAD (headshot, +30%, dazes) or BODY (drains stamina); aim at nothing and you miss. Flick upward for an uppercut. Hold both buttons to grab.</div>
+  <div class="sub" style="margin:-4px 0 10px;font-size:11px">First person: the camera is your eyes. Punches work the same as in third person (click, hold to charge). Hold both mouse buttons to grab.</div>
   <div class="crow"><b>CAMERA SENSITIVITY</b><input type="range" id="camSens" min="0.2" max="2.5" step="0.05" value="${save.camSens==null?1:save.camSens}"></div>
   <div class="crow"><b>BLOOD & GORE</b><div class="sw"><button class="chip ${goreOn()?'':'on'}" data-gore="0">OFF</button><button class="chip ${goreOn()&&!superGore()?'on':''}" data-gore="1">ON</button><button class="chip ${superGore()?'on':''}" data-gore="2" style="${superGore()?'background:#8a0000;border-color:#ff3a3a':''}">💀 SUPER GORE</button></div></div>
   <button class="danger" id="resetSave">RESET ALL PROGRESS</button>`;
