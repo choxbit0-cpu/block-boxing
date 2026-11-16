@@ -2818,7 +2818,7 @@ G.resolveHit=(a,b,H=null,hitIdx=0)=>{
   b.hp-=dmg;a.st.dmg+=dmg;a.st.landed++;if(a===G.player&&G.tut)tutEvent('hit',P);if(a===G.player)addHype(dmg*0.45+((P.chg||0)>0.5||P.rising?4:0)+(P.momRun||P.momSpin>0.5||P.aerial?5:0));
   // cuts and swelling build up on head shots; too deep a cut and the doctor stops the fight
   if(hitPos.y>=b.root.position.y+1.1*b.d.hScale&&!G.training){const hv=P.rising||dmg>14||(P.chg||0)>0.5;
-    b.swell=Math.min(1,(b.swell||0)+dmg*0.005*(hv?1.5:1));b.cut=Math.min(100,(b.cut||0)+dmg*(hv?0.55:0.2)*(armed&&W.id!=='none'?1.6:1));swellLook(b);
+    const share=dmg/Math.max(1,b.d.maxHP);b.swell=Math.min(1,(b.swell||0)+Math.min(0.06,share*0.5)*(hv?1.5:1));b.cut=Math.min(100,(b.cut||0)+Math.min(hv?3.5:1.5,share*(hv?18:7))*(armed&&W.id!=='none'?1.5:1));swellLook(b);
     if(b.cut>45)b.bleedT=Math.max(b.bleedT||0,b.cut/45);
     if(b.cut>=75&&!b._docWarn){b._docWarn=true;comm(`THE DOCTOR IS LOOKING AT THAT CUT ON ${b.name()}...`,true);}
     if(b.cut>=100&&G.mode==='fight'&&!G.refFight){bigText('DOCTOR STOPS IT!','red');comm('THE DOCTOR WAVES IT OFF! TECHNICAL KNOCKOUT!',true);G.finish(a,'TKO','the doctor stopped it — the cut was too deep');return;}}
@@ -3935,6 +3935,7 @@ function startFight(idx,opts={}){
     if(!G.map.weather&&Math.random()<0.28){G.wet=true;G.rainOverride=true;weather.visible=true;const W=WEATHER.rain;wMat.color.setHex(W.c);wMat.size=W.s;wMat.opacity=W.o;}}
   if(!G.training&&!B.raw&&!B.big){boosted.height=Math.min(130,Math.max(B.stats.height+30,(save.stats.height||50)+12));boosted.weight=Math.min(100,B.stats.weight+6);boosted.body=Math.min(100,B.stats.body+5);boosted.stamina=Math.min(100,B.stats.stamina+5);boosted.reach=Math.min(100,B.stats.reach+2);
     if(G.mod.giant){boosted.height=230;boosted.weight=100;boosted.body=100;}if(G.mod.prize)STAT_KEYS.forEach(k=>boosted[k]=Math.min(100,boosted[k]+10));}
+  if(!G.training&&!opts.tutorial){const f=Math.min(0.97,0.8+Math.max(0,idx)*0.0012);STAT_KEYS.forEach(k=>{const want=Math.round((save.stats[k]||50)*f);if(want>(boosted[k]||0))boosted[k]=Math.min(STAT_MAX,want);});}   // they scale with your stats
   G.bot=new Fighter(boosted,{name:B.name,...B.look});G.brain=new Brain(G.bot,G.training?B.diff:Math.min(1,B.diff+0.05));
   G.brain.moveSpecs=(B.moves||[]).filter(id=>TEMPLATES[id]).map(id=>customSpec(buildShopMove(id)));
   if(B.refBoss)G.brain.refBoss={whistle:3,yellow:2,red:6,tele:null,rage:0};
